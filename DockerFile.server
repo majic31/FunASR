@@ -1,0 +1,26 @@
+# ---------------------------------------------------------------
+# ---------- 下面的必须是基础，非必须则可以删掉，跟原镜像保持一致
+# ---------------------------------------------------------------
+
+# 必须-使用阿里funasr作为基础镜像
+FROM registry.cn-hangzhou.aliyuncs.com/funasr_repo/funasr:funasr-runtime-sdk-cpu-0.4.6
+
+# 必须-设置工作目录
+WORKDIR /workspace
+
+# 非必须-准备环境
+RUN mkdir -p maj_funasr
+WORKDIR /workspace/maj_funasr
+COPY . .
+
+# 非必须-编译
+RUN cp -r /workspace/FunASR/runtime/websocket/third_party /workspace/maj_funasr/runtime/websocket/ && \
+    mkdir -p /workspace/maj_funasr/runtime/websocket/build && \
+    cd /workspace/maj_funasr/runtime/websocket/build && \
+    cmake -DCMAKE_BUILD_TYPE=release .. \
+      -DONNXRUNTIME_DIR=/workspace/onnxruntime-linux-x64-1.14.0 \
+      -DFFMPEG_DIR=/workspace/ffmpeg-master-latest-linux64-gpl-shared && \
+    make -j 2
+
+# 做个保护，后面用真实的运行命令
+CMD ["/bin/bash"]
