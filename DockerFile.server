@@ -1,5 +1,6 @@
 # ---------------------------------------------------------------
 # ---------- 下面的必须是基础，非必须则可以删掉，跟原镜像保持一致
+# ---------- 运行：docker build -f DockerFile.server  -t funasr:maj .
 # ---------------------------------------------------------------
 
 # 必须-使用阿里funasr作为基础镜像
@@ -8,19 +9,37 @@ FROM registry.cn-hangzhou.aliyuncs.com/funasr_repo/funasr:funasr-runtime-sdk-cpu
 # 必须-设置工作目录
 WORKDIR /workspace
 
+# 更新包列表并安装基础工具
+RUN apt-get update && \
+    apt-get install -y vim unzip iputils-ping && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir pydub
+
 # 非必须-准备环境
-RUN mkdir -p maj_funasr
-WORKDIR /workspace/maj_funasr
+RUN mv FunASR backup_FunASR && mkdir FunASR
+WORKDIR /workspace/FunASR
+# 将当前目录copy进去FunASR
 COPY . .
 
 # 非必须-编译
-RUN cp -r /workspace/FunASR/runtime/websocket/third_party /workspace/maj_funasr/runtime/websocket/ && \
-    mkdir -p /workspace/maj_funasr/runtime/websocket/build && \
-    cd /workspace/maj_funasr/runtime/websocket/build && \
+RUN cp -r /workspace/backup_FunASR/runtime/websocket/third_party /workspace/FunASR/runtime/websocket/ && \
+    mkdir -p /workspace/FunASR/runtime/websocket/build && \
+    cd /workspace/FunASR/runtime/websocket/build && \
     cmake -DCMAKE_BUILD_TYPE=release .. \
       -DONNXRUNTIME_DIR=/workspace/onnxruntime-linux-x64-1.14.0 \
       -DFFMPEG_DIR=/workspace/ffmpeg-master-latest-linux64-gpl-shared && \
     make -j 2
 
+# 执行
 # 做个保护，后面用真实的运行命令
 CMD ["/bin/bash"]
+#WORKDIR /workspace/FunASR/runtime
+#ENTRYPOINT ["bash", "run_server.sh"]
+#CMD ["--download-model-dir", "/workspace/models", \
+#     "--vad-dir", "damo/speech_fsmn_vad_zh-cn-16k-common-onnx", \
+#     "--model-dir", "damo/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-onnx", \
+#     "--punc-dir", "damo/punc_ct-transformer_cn-en-common-vocab471067-large-onnx", \
+#     "--lm-dir", "damo/speech_ngram_lm_zh-cn-ai-wesp-fst", \
+#     "--itn-dir", "thuduj12/fst_itn_zh", \
+#     "--hotword", "/workspace/models/hotwords.txt"]
