@@ -8,16 +8,23 @@
 FROM funasr:maj
 
 # 尝试运行时的问题（不影响运行但会打日志），包括onnxconverter_common，修复ffmpeg不存在的问题等
-RUN pip install onnxconverter_common && cd /usr/bin/ && ln -sf /workspace/ffmpeg-master-latest-linux64-gpl-shared/bin/ffmpeg ffmpeg
+RUN apt-get update && apt-get install -y cron && \
+    pip install onnxconverter_common && \
+    cd /usr/bin/ && ln -sf /workspace/ffmpeg-master-latest-linux64-gpl-shared/bin/ffmpeg ffmpeg
 
 # 必须-设置工作目录
 WORKDIR /workspace/FunASR/runtime
+COPY ./runtime/websocket/bin/clean_log.sh ./websocket/bin/
+RUN chmod +x websocket/bin/clean_log.sh && \
+    echo "0 * * * * /workspace/FunASR/runtime/websocket/bin/clean_log.sh" >> /etc/cron.d/clean_log && \
+    chmod 0644 /etc/cron.d/clean_log && crontab /etc/cron.d/clean_log && touch /var/log/cron.log
+
+# 可以在这里面改模型
 COPY runtime/run_server_nobackground.sh .
-ENTRYPOINT ["bash", "run_server_nobackground.sh"]
-CMD ["--download-model-dir", "/workspace/models", \
-     "--vad-dir", "damo/speech_fsmn_vad_zh-cn-16k-common-onnx", \
-     "--model-dir", "damo/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-onnx", \
-     "--punc-dir", "damo/punc_ct-transformer_cn-en-common-vocab471067-large-onnx", \
-     "--lm-dir", "damo/speech_ngram_lm_zh-cn-ai-wesp-fst", \
-     "--itn-dir", "thuduj12/fst_itn_zh", \
-     "--hotword", "/workspace/models/hotwords.txt"]
+CMD cron -f & bash run_server_nobackground.sh --download-model-dir /workspace/models \
+     --vad-dir damo/speech_fsmn_vad_zh-cn-16k-common-onnx \
+     --model-dir damo/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-onnx \
+     --punc-dir damo/punc_ct-transformer_cn-en-common-vocab471067-large-onnx \
+     --lm-dir damo/speech_ngram_lm_zh-cn-ai-wesp-fst \
+     --itn-dir thuduj12/fst_itn_zh \
+     --hotword /workspace/models/hotwords.txt
