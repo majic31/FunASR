@@ -8,7 +8,7 @@ lm_dir="damo/speech_ngram_lm_zh-cn-ai-wesp-fst"
 port=10095
 certfile="$(pwd)/ssl_key/server.crt"
 keyfile="$(pwd)/ssl_key/server.key"
-hotword="$(pwd)/websocket/hotwords.txt"
+hotword="/workspace/models/hotwords.txt"
 # set decoder_thread_num
 decoder_thread_num=$(cat /proc/cpuinfo | grep "processor"|wc -l) || { echo "Get cpuinfo failed. Set decoder_thread_num = 32"; decoder_thread_num=32; }
 multiple_io=16
