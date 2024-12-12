@@ -1,3 +1,4 @@
+#!/bin/bash
 
 download_model_dir="/workspace/models"
 model_dir="damo/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-onnx"
