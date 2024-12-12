@@ -32,7 +32,17 @@ int main(int argc, char* argv[]) {
 #endif
   try {
     google::InitGoogleLogging(argv[0]);
-    FLAGS_logtostderr = true;
+    // 确保日志目录存在
+    if (access("/workspace/FunASR/logs", F_OK) == -1) {
+        mkdir("/workspace/FunASR/logs", 0777);
+    }
+    // 设置日志输出到文件，并禁止输出到stderr
+    FLAGS_logtostderr = false;         // 禁止直接输出到stderr
+    FLAGS_alsologtostderr = true;     // 如果需要同时输出到stderr和文件，可以设置为true
+    FLAGS_log_dir = "/workspace/FunASR/logs";   // 设置日志文件存储目录
+
+    // 设置每个日志文件的最大大小（以MB为单位）
+    FLAGS_max_log_size = 100;  // 100MB
     std::string tpass_version = "";
 #ifdef _WIN32
     tpass_version = "0.1.0";
