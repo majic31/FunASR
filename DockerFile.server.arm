@@ -1,7 +1,7 @@
 # ---------------------------------------------------------------
 # ---------- 下面的必须是基础，非必须则可以删掉，跟原镜像保持一致
 # ---------- 运行：
-#              docker buildx create --use   (看看是不是不用也可以)
+#              docker buildx create --use   (只要不跟intel混用即可，一般default都是跟随平台的)
 #              docker buildx build --platform linux/arm64 -f DockerFile.server.arm -t funasr:arm --load .
 # ---------------------------------------------------------------
 
