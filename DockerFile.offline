@@ -7,10 +7,10 @@
 # 必须-使用阿里funasr作为基础镜像
 FROM funasr:maj
 
-# 尝试运行时的问题（不影响运行但会打日志），包括onnxconverter_common，修复ffmpeg不存在的问题等
-RUN apt-get update && apt-get install -y cron && \
-    pip install onnxconverter_common && \
-    cd /usr/bin/ && ln -sf /workspace/ffmpeg-master-latest-linux64-gpl-shared/bin/ffmpeg ffmpeg
+# deprecated：在DockerFile.server中修复：尝试运行时的问题（不影响运行但会打日志），包括onnxconverter_common，修复ffmpeg不存在的问题等
+# RUN apt-get update && apt-get install -y cron && \
+#    pip install onnxconverter_common && \
+#    cd /usr/bin/ && ln -sf /workspace/ffmpeg-master-latest-linux64-gpl-shared/bin/ffmpeg ffmpeg
 
 # 必须-设置工作目录
 WORKDIR /workspace/FunASR/runtime

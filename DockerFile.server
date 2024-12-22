@@ -9,12 +9,12 @@ FROM registry.cn-hangzhou.aliyuncs.com/funasr_repo/funasr:funasr-runtime-sdk-cpu
 # 必须-设置工作目录
 WORKDIR /workspace
 
-# 更新包列表并安装基础工具
+# 更新包列表并安装基础工具，包括安装cron，修复onnxconverter_common（不安装会出现运行时错误），ffmpeg不存在的问题等
 RUN apt-get update && \
-    apt-get install -y vim unzip iputils-ping && \
-    rm -rf /var/lib/apt/lists/*
-
-RUN pip install --no-cache-dir pydub
+    apt-get install -y vim unzip iputils-ping cron && \
+    rm -rf /var/lib/apt/lists/* && \
+    pip install --no-cache-dir pydub onnx onnxconverter_common && \
+    cd /usr/bin/ && ln -sf /workspace/ffmpeg-master-latest-linux64-gpl-shared/bin/ffmpeg ffmpeg
 
 # 非必须-准备环境
 RUN mv FunASR backup_FunASR && mkdir FunASR
@@ -33,6 +33,7 @@ RUN cp -r /workspace/backup_FunASR/runtime/websocket/third_party /workspace/FunA
 
 # 执行
 # 做个保护，后面用真实的运行命令
+ENV MODELSCOPE_CACHE=/workspace/models
 CMD ["/bin/bash"]
 #WORKDIR /workspace/FunASR/runtime
 #ENTRYPOINT ["bash", "run_server.sh"]
