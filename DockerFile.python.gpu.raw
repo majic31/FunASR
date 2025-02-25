@@ -1,0 +1,47 @@
+# ---------------------------------------------------------------
+# ---------- 下面的必须是基础，非必须则可以删掉，跟原镜像保持一致
+# ---------- 运行：docker build -f DockerFile.python.gpu.raw  -t funasr_maj:gpu .
+# ---------------------------------------------------------------
+
+# ubuntu基础镜像
+FROM nvidia/cuda:11.6.2-cudnn8-runtime-ubuntu20.04
+
+# 设置阿里云 apt 源
+# RUN sed -i 's/archive.ubuntu.com/mirrors.aliyun.com/g' /etc/apt/sources.list
+
+# 设置非交互式安装环境变量并指定时区
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=Asia/Shanghai
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+# 设置环境变量，使用 UTF-8 编码
+ENV LANG C.UTF-8
+ENV LC_ALL C.UTF-8
+
+# 更新系统并安装必要的软件包，同时安装 Python 依赖
+COPY torch-1.12.0+cu113-cp38-cp38-linux_x86_64.whl /tmp/
+RUN apt-get update && \
+    apt-get install -y vim unzip iputils-ping cron ffmpeg tzdata python3.8 python3.8-dev python3-pip&& \
+    rm -rf /var/lib/apt/lists/* && \
+    ln -s /usr/bin/python3.8 /usr/bin/python && \
+    # 设置阿里云 pip 源
+    pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/ && \
+    pip install --no-cache-dir /tmp/torch-1.12.0+cu113-cp38-cp38-linux_x86_64.whl && \
+    #pip install --no-cache-dir torch_blade==3.27.0+1.12.1.cu113 -f https://pai-blade.oss-cn-zhangjiakou.aliyuncs.com/release/repo_ext.html && \
+    pip install --no-cache-dir torchaudio==0.12.0 --index-url https://download.pytorch.org/whl/cu113 && \
+    pip install --no-cache-dir hydra-core modelscope huggingface_hub addict datasets==2.16.0 sortedcontainers simplejson humanfriendly pillow
+
+# 创建工作目录
+RUN mkdir -p /workspace/FunASR
+WORKDIR /workspace/FunASR
+
+# 将当前目录复制到容器内的工作目录
+COPY . .
+
+# 安装当前项目
+RUN pip install --no-cache-dir -e ./
+
+# 设置环境变量
+ENV MODELSCOPE_CACHE=/workspace/models
+
+# 执行命令
+CMD ["/bin/bash"]
