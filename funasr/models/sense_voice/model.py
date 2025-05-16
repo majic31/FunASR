@@ -1,9 +1,11 @@
+import logging
 from typing import Iterable, Optional
 import types
 import time
 import numpy as np
 import torch
 import torch.nn.functional as F
+from funasr_onnx.utils.sentencepiece_tokenizer import SentencepiecesTokenizer
 from torch import Tensor
 from torch import nn
 from torch.cuda.amp import autocast
@@ -17,7 +19,6 @@ from funasr.models.ctc.ctc import CTC
 
 from funasr.register import tables
 
-
 from funasr.models.paraformer.search import Hypothesis
 from .utils.ctc_alignment import ctc_forced_align
 
@@ -29,13 +30,13 @@ class SinusoidalPositionEncoder(torch.nn.Module):
         pass
 
     def encode(
-        self, positions: torch.Tensor = None, depth: int = None, dtype: torch.dtype = torch.float32
+            self, positions: torch.Tensor = None, depth: int = None, dtype: torch.dtype = torch.float32
     ):
         batch_size = positions.size(0)
         positions = positions.type(dtype)
         device = positions.device
         log_timescale_increment = torch.log(torch.tensor([10000], dtype=dtype, device=device)) / (
-            depth / 2 - 1
+                depth / 2 - 1
         )
         inv_timescales = torch.exp(
             torch.arange(depth / 2, device=device).type(dtype) * (-log_timescale_increment)
@@ -806,6 +807,79 @@ class SenseVoiceSmall(nn.Module):
 
         return loss_rich, acc_rich
 
+    def get_timestamps_text(self, yseq: Tensor, tokenizer: SentencepiecesTokenizer = None, frame_duration_sec=0.06,
+                            continue_frame_buff=3):
+        """
+        生成时间戳列表，合并连续相同的token，忽略值为0的元素
+
+        参数:
+            yseq: 输入的张量或数组，包含token ID序列
+            tokenizer: tokenizer对象
+            frame_duration_sec: 每帧对应的秒数，默认为0.06 s
+
+        返回:
+            timestamps: 列表，每个元素为 [token, start_time_ms, end_time_ms]
+            text: 文本
+        """
+        # yseq = yseq[4:]
+        # 转换为NumPy数组
+        if isinstance(yseq, np.ndarray):
+            arr = yseq
+        else:
+            arr = yseq.numpy() if hasattr(yseq, 'numpy') else np.array(yseq)
+
+        # 处理空输入
+        if len(arr) <= 4:
+            return [], ''
+        # 从第5个开始，因为前4个是语言，是否itn，emotion，场景四个标签；
+        arr = arr[4:]
+        is_nonzero = arr != 0
+        boundary_indices = np.where(is_nonzero)[0]
+        if len(boundary_indices) == 0:
+            return [], ''
+
+        token_int = arr[boundary_indices]
+        text = tokenizer.decode(token_int.tolist())
+        token_list = tokenizer.text2tokens(text)
+        # 还原连续124的情况
+        mask = np.ones_like(token_int)
+        mask[1:] &= ~((token_int[1:] == 124) & (token_int[:-1] == 124))
+        blank_index_list = np.where(mask==0)[0]
+        if len(blank_index_list) > 0:
+            logging.warn(f'has multi blank. text={text}, token_int={token_int}')
+            for blank_index in blank_index_list:
+                token_list.insert(blank_index, '▁')
+        if len(token_list) != len(boundary_indices):
+            logging.error(f'len(token_list) != len(boundary_indices), len(token_list)={len(token_list)}, len(boundary_indices)={len(boundary_indices)}')
+            return [], ''
+        pre_token = None
+        start_idx = 0
+        timestamps = []
+        for i in range(len(boundary_indices)):
+            curr_token = token_list[i]
+            if (pre_token != curr_token) or (boundary_indices[i] - start_idx > continue_frame_buff):
+                # 新符号
+                if pre_token:
+                    start_frame = start_idx
+                    if pre_token == curr_token:
+                        end_frame = boundary_indices[i] + 1 if (i < len(boundary_indices) - 1) else \
+                            boundary_indices[-1]
+                    else:
+                        end_frame = boundary_indices[i - 1] + 1 if (i < len(boundary_indices) - 1) else \
+                        boundary_indices[-1]
+                    timestamps.append([pre_token, start_frame * frame_duration_sec, end_frame * frame_duration_sec])
+                pre_token = curr_token
+                start_idx = boundary_indices[i]
+        # 最后一个符号
+        if pre_token:
+            start_frame = start_idx
+            end_frame = boundary_indices[-1]
+            timestamps.append([pre_token, start_frame * frame_duration_sec, end_frame * frame_duration_sec])
+        text = ''.join([sub_list[0] for sub_list in timestamps])
+        # 去除_，改为空格
+        text = text.replace('▁', ' ')
+        return timestamps, text
+
     def inference(
         self,
         data_in,
@@ -894,7 +968,15 @@ class SenseVoiceSmall(nn.Module):
         for i in range(b):
             x = ctc_logits[i, : encoder_out_lens[i].item(), :]
             yseq = x.argmax(dim=-1)
-            yseq = torch.unique_consecutive(yseq, dim=-1)
+            if output_timestamp:
+                timestamp, text = self.get_timestamps_text(yseq, tokenizer)
+            else:
+                timestamp = None
+                yseq = torch.unique_consecutive(yseq, dim=-1)
+                mask = yseq != self.blank_id
+                token_int = yseq[mask].tolist()
+                # Change integer-ids to tokens
+                text = tokenizer.decode(token_int)
 
             ibest_writer = None
             if kwargs.get("output_dir") is not None:
@@ -902,58 +984,14 @@ class SenseVoiceSmall(nn.Module):
                     self.writer = DatadirWriter(kwargs.get("output_dir"))
                 ibest_writer = self.writer[f"1best_recog"]
 
-            mask = yseq != self.blank_id
-            token_int = yseq[mask].tolist()
-
-            # Change integer-ids to tokens
-            text = tokenizer.decode(token_int)
-
-            # result_i = {"key": key[i], "text": text}
-            # results.append(result_i)
-
             if ibest_writer is not None:
                 ibest_writer["text"][key[i]] = text
 
             if output_timestamp:
-                from itertools import groupby
-
-                timestamp = []
-                tokens = tokenizer.text2tokens(text)[4:]
-                token_back_to_id = tokenizer.tokens2ids(tokens)
-                token_ids = []
-                for tok_ls in token_back_to_id:
-                    if tok_ls: token_ids.extend(tok_ls)
-                    else: token_ids.append(124)
-
-                if len(token_ids) == 0:
-                    result_i = {"key": key[i], "text": text}
-                    results.append(result_i)
-                    continue
-
-                logits_speech = self.ctc.softmax(encoder_out)[i, 4 : encoder_out_lens[i].item(), :]
-                pred = logits_speech.argmax(-1).cpu()
-                logits_speech[pred == self.blank_id, self.blank_id] = 0
-                align = ctc_forced_align(
-                    logits_speech.unsqueeze(0).float(),
-                    torch.Tensor(token_ids).unsqueeze(0).long().to(logits_speech.device),
-                    (encoder_out_lens[i] - 4).long(),
-                    torch.tensor(len(token_ids)).unsqueeze(0).long().to(logits_speech.device),
-                    ignore_id=self.ignore_id,
-                )
-                pred = groupby(align[0, : encoder_out_lens[i]])
-                _start = 0
-                token_id = 0
-                ts_max = encoder_out_lens[i] - 4
-                for pred_token, pred_frame in pred:
-                    _end = _start + len(list(pred_frame))
-                    if pred_token != 0:
-                        ts_left = max((_start * 60 - 30) / 1000, 0)
-                        ts_right = min((_end * 60 - 30) / 1000, (ts_max * 60 - 30) / 1000)
-                        timestamp.append([tokens[token_id], ts_left, ts_right])
-                        token_id += 1
-                    _start = _end
-                timestamp = self.post(timestamp)
-                result_i = {"key": key[i], "text": text, "timestamp": timestamp}
+                text_timestamp_list = self.post(timestamp)
+                text = ' '.join([sub_list[0] for sub_list in text_timestamp_list])
+                timestamp_list = [sub_list[1:] for sub_list in text_timestamp_list]
+                result_i = {"key": key[i], "text": text, "timestamp": timestamp_list}
                 results.append(result_i)
             else:
                 result_i = {"key": key[i], "text": text}
@@ -962,26 +1000,21 @@ class SenseVoiceSmall(nn.Module):
 
     def post(self, timestamp):
         timestamp_new = []
-        prev_word = None
         for i, t in enumerate(timestamp):
             word, start, end = t
             start = int(start * 1000)
             end = int(end * 1000)
-            if word == "▁":
+            prev_word = timestamp_new[-1][0] if len(timestamp_new)>0 else None
+            if word == '▁':
                 continue
-            if i == 0:
-                # timestamp_new.append([word, start, end])
-                timestamp_new.append([start, end])
             elif word.startswith("▁"):
                 word = word[1:]
-                timestamp_new.append([start, end])
-            elif prev_word is not None and prev_word.isalpha() and prev_word.isascii() and word.isalpha() and word.isascii():
-                prev_word += word
-                timestamp_new[-1][1] = end
+                timestamp_new.append([word, start, end])
+            elif prev_word and prev_word.isalpha() and prev_word.isascii() and word.isalpha() and word.isascii():
+                timestamp_new[-1][2] = end
+                timestamp_new[-1][0] += word
             else:
-                # timestamp_new[-1][0] += word
-                timestamp_new.append([start, end])
-            prev_word = word
+                timestamp_new.append([word, start, end])
         return timestamp_new
 
     def export(self, **kwargs):
