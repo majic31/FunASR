@@ -1,6 +1,6 @@
 # ---------------------------------------------------------------
 # ---------- 下面的必须是基础，非必须则可以删掉，跟原镜像保持一致
-# ---------- 运行：docker build -f DockerFile.python.gpu.raw  -t funasr_maj:gpu .
+# ---------- 运行：docker build -f DockerFile.python.gpu.raw  -t funasr_maj:gpu_1.1 .
 # ---------------------------------------------------------------
 
 # ubuntu基础镜像
