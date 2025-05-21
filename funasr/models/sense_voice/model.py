@@ -5,14 +5,13 @@ import time
 import numpy as np
 import torch
 import torch.nn.functional as F
-from funasr_onnx.utils.sentencepiece_tokenizer import SentencepiecesTokenizer
 from torch import Tensor
 from torch import nn
 from torch.cuda.amp import autocast
 from funasr.metrics.compute_acc import compute_accuracy, th_accuracy
 from funasr.losses.label_smoothing_loss import LabelSmoothingLoss
 from funasr.train_utils.device_funcs import force_gatherable
-
+from funasr.tokenizer.sentencepiece_tokenizer import SentencepiecesTokenizer
 from funasr.utils.load_utils import load_audio_text_image_video, extract_fbank
 from funasr.utils.datadir_writer import DatadirWriter
 from funasr.models.ctc.ctc import CTC
@@ -826,7 +825,7 @@ class SenseVoiceSmall(nn.Module):
         if isinstance(yseq, np.ndarray):
             arr = yseq
         else:
-            arr = yseq.numpy() if hasattr(yseq, 'numpy') else np.array(yseq)
+            arr = yseq.detach().cpu().numpy() if hasattr(yseq, 'numpy') else np.array(yseq)
 
         # 处理空输入
         if len(arr) <= 4:
