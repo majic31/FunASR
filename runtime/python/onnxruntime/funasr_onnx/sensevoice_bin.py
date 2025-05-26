@@ -76,7 +76,7 @@ class SenseVoiceSmall:
             bpemodel=os.path.join(model_dir, "chn_jpn_yue_eng_ko_spectok.bpe.model")
         )
         config["frontend_conf"]["cmvn_file"] = cmvn_file
-        self.frontend = WavFrontend(**config["frontend_conf"])
+        self.frontend_config = config
         self.ort_infer = OrtInferSession(
             model_file, device_id, intra_op_num_threads=intra_op_num_threads
         )
@@ -145,11 +145,12 @@ class SenseVoiceSmall:
         return language_list, textnorm_list
 
     def __call__(self, wav_content: Union[str, np.ndarray, List[str]], **kwargs):
+        frontend = WavFrontend(**self.frontend_config["frontend_conf"])
         language_input = kwargs.get("language", "auto")
         textnorm_input = kwargs.get("textnorm", "woitn")
         language_list, textnorm_list = self.read_tags(language_input, textnorm_input)
         
-        waveform_list = self.load_data(wav_content, self.frontend.opts.frame_opts.samp_freq)
+        waveform_list = self.load_data(wav_content, frontend.opts.frame_opts.samp_freq)
         waveform_nums = len(waveform_list)
         
         assert len(language_list) == 1 or len(language_list) == waveform_nums, \
@@ -160,7 +161,7 @@ class SenseVoiceSmall:
         asr_res = []
         for beg_idx in range(0, waveform_nums, self.batch_size):
             end_idx = min(waveform_nums, beg_idx + self.batch_size)
-            feats, feats_len = self.extract_feat(waveform_list[beg_idx:end_idx])
+            feats, feats_len = self.extract_feat(waveform_list[beg_idx:end_idx], frontend)
             _language_list = language_list[beg_idx:end_idx]
             _textnorm_list = textnorm_list[beg_idx:end_idx]
             if not len(_language_list):
@@ -228,15 +229,15 @@ class SenseVoiceSmall:
 
         raise TypeError(f"The type of {wav_content} is not in [str, np.ndarray, list]")
 
-    def extract_feat(self, waveform_list: List[np.ndarray]) -> Tuple[np.ndarray, np.ndarray]:
+    def extract_feat(self, waveform_list: List[np.ndarray], fronted) -> Tuple[np.ndarray, np.ndarray]:
         feats, feats_len = [], []
         for waveform in waveform_list:
-            speech, _ = self.frontend.fbank(waveform)
+            speech, _ = fronted.fbank(waveform)
 
             if speech is None or speech.size == 0:
                 print("detected speech size {speech.size}")
                 raise ValueError("Empty speech detected, skipping this waveform.")
-            feat, feat_len = self.frontend.lfr_cmvn(speech)
+            feat, feat_len = fronted.lfr_cmvn(speech)
             feats.append(feat)
             feats_len.append(feat_len)
 

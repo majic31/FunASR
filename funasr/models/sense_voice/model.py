@@ -807,7 +807,7 @@ class SenseVoiceSmall(nn.Module):
         return loss_rich, acc_rich
 
     def get_timestamps_text(self, yseq: Tensor, tokenizer: SentencepiecesTokenizer = None, frame_duration_sec=0.06,
-                            continue_frame_buff=3):
+                            continue_frame_buff=2):
         """
         生成时间戳列表，合并连续相同的token，忽略值为0的元素
 
@@ -815,7 +815,7 @@ class SenseVoiceSmall(nn.Module):
             yseq: 输入的张量或数组，包含token ID序列
             tokenizer: tokenizer对象
             frame_duration_sec: 每帧对应的秒数，默认为0.06 s
-
+            continue_frame_buff: 连续帧大小，当上一个token与当前token相同时，如果连续帧小于阈值，则会被swallow掉，如果大于阈值，则会被保留
         返回:
             timestamps: 列表，每个元素为 [token, start_time_ms, end_time_ms]
             text: 文本
@@ -856,6 +856,7 @@ class SenseVoiceSmall(nn.Module):
         timestamps = []
         for i in range(len(boundary_indices)):
             curr_token = token_list[i]
+            # 如果前一个token不等于当前token（新符号），或者当前时间片与上一时间片之差大于阈值（小于阈值则会被吞掉）
             if (pre_token != curr_token) or (boundary_indices[i] - start_idx > continue_frame_buff):
                 # 新符号
                 if pre_token:
