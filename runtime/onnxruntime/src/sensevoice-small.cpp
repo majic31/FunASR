@@ -369,8 +369,8 @@ string SenseVoiceSmall::CTCSearch(float * in, std::vector<int32_t> paraformer_le
     // 生成时间戳
     std::ostringstream oss;
     for (size_t i = 0; i < timestamp_list.size(); ++i) {
-        oss << vec[i];
-        if (i != vec.size() - 1) {
+        oss << timestamp_list[i];
+        if (i != timestamp_list.size() - 1) {
             oss << ",";  // 添加分隔符
         }
     }
