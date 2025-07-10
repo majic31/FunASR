@@ -10,11 +10,13 @@ model = AutoModel(
     vad_model="iic/speech_fsmn_vad_zh-cn-16k-common-pytorch",
     vad_kwargs={"max_single_segment_time": 60000},
     punc_model="iic/punc_ct-transformer_zh-cn-common-vocab272727-pytorch",
+    sentence_timestamp=True
     # spk_model="iic/speech_campplus_sv_zh-cn_16k-common",
 )
 
 res = model.generate(
-    input="https://isv-data.oss-cn-hangzhou.aliyuncs.com/ics/MaaS/ASR/test_audio/asr_example_zh.wav",
+    # input="/Users/majie/data/R00286cdf10379_20250424083149_16k.wav",
+    input="/Users/majie/data/R003b364e10438_20250419152021.wav",
     cache={},
 )
 

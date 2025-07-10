@@ -15,7 +15,7 @@ model = AutoModel(
 
 # example1
 res = model.generate(
-    input="https://isv-data.oss-cn-hangzhou.aliyuncs.com/ics/MaaS/ASR/test_audio/asr_example_zh.wav",
+    input="/Users/majie/data/R00286cdf10379_20250424083149_16k.wav",
     hotword="达摩院 魔搭",
     # return_raw_text=True,     # return raw text recognition results splited by space of equal length with timestamp
     # preset_spk_num=2,         # preset speaker num for speaker cluster model

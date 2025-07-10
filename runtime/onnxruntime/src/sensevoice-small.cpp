@@ -6,6 +6,8 @@
 #include "precomp.h"
 #include "sensevoice-small.h"
 #include <cstddef>
+#include <sstream>
+#include <iostream>
 
 using namespace std;
 namespace funasr {
@@ -364,8 +366,16 @@ string SenseVoiceSmall::CTCSearch(float * in, std::vector<int32_t> paraformer_le
             text += ".";
         }
     }
-
-    return str_lang + str_emo + str_event + " " + text + "|";
+    // 生成时间戳
+    std::ostringstream oss;
+    for (size_t i = 0; i < timestamp_list.size(); ++i) {
+        oss << vec[i];
+        if (i != vec.size() - 1) {
+            oss << ",";  // 添加分隔符
+        }
+    }
+    // return str_lang + str_emo + str_event + " " + text + "|";
+    return text + "|" + oss.str();
 }
 
 string SenseVoiceSmall::GreedySearch(float * in, int n_len,  int64_t token_nums, bool is_stamp, std::vector<float> us_alphas, std::vector<float> us_cif_peak)
