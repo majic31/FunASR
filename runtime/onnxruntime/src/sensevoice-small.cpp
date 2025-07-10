@@ -375,7 +375,7 @@ string SenseVoiceSmall::CTCSearch(float * in, std::vector<int32_t> paraformer_le
         }
     }
     // return str_lang + str_emo + str_event + " " + text + "|";
-    return text + "|" + oss.str();
+    return text + " | " + oss.str();
 }
 
 string SenseVoiceSmall::GreedySearch(float * in, int n_len,  int64_t token_nums, bool is_stamp, std::vector<float> us_alphas, std::vector<float> us_cif_peak)
