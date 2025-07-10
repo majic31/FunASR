@@ -322,12 +322,12 @@ string SenseVoiceSmall::CTCSearch(float * in, std::vector<int32_t> paraformer_le
 
         if ( ( (y == blank_id) || (y != blank_id && y != prev_id) ) && is_start_token == true){
             is_start_token = false;
-            timestamp_list.push_back(t * frame_duration_sec)
+            timestamp_list.push_back(t * frame_duration_sec);
         }
 
         if (y != blank_id && y != prev_id) {
             if (tokens.size() >= 3){
-                timestamp_list.push_back(t * frame_duration_sec)
+                timestamp_list.push_back(t * frame_duration_sec);
                 is_start_token = true;
             }
             tokens.push_back(y);
@@ -335,7 +335,7 @@ string SenseVoiceSmall::CTCSearch(float * in, std::vector<int32_t> paraformer_le
         prev_id = y;
     }
     if (is_start_token == true){
-        timestamp_list.push_back((paraformer_length[0]-1) * frame_duration_sec)
+        timestamp_list.push_back((paraformer_length[0]-1) * frame_duration_sec);
     }
     string str_lang = "";
     string str_emo = "";
