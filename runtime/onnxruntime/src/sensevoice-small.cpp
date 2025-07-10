@@ -447,7 +447,6 @@ std::vector<std::string> SenseVoiceSmall::Forward(float** din, int* len, bool in
     std::vector<std::string> results;
     string result="";
     int32_t in_feat_dim = fbank_opts_.mel_opts.num_bins;
-
     if(batch_in != 1){
         results.push_back(result);
         return results;
