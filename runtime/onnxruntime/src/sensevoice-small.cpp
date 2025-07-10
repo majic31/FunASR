@@ -302,7 +302,7 @@ void SenseVoiceSmall::LoadCmvn(const char *filename)
     }
 }
 
-string SenseVoiceSmall::CTCSearch(float * in, std::vector<int32_t> paraformer_length, std::vector<int64_t> outputShape, int sample_rate, float frame_duration_sec)
+string SenseVoiceSmall::CTCSearch(float * in, std::vector<int32_t> paraformer_length, std::vector<int64_t> outputShape, float frame_duration_sec)
 {
     std::string unicodeChar = "▁";
     int32_t vocab_size = outputShape[2];
@@ -442,11 +442,12 @@ std::vector<std::vector<float>> SenseVoiceSmall::CompileHotwordEmbedding(std::st
     return hw_emb;
 }
 
-std::vector<std::string> SenseVoiceSmall::Forward(float** din, int* len, bool input_finished, std::string svs_lang, bool svs_itn, int batch_in, int sample_rate)
+std::vector<std::string> SenseVoiceSmall::Forward(float** din, int* len, bool input_finished, std::string svs_lang, bool svs_itn, int batch_in)
 {
     std::vector<std::string> results;
     string result="";
     int32_t in_feat_dim = fbank_opts_.mel_opts.num_bins;
+
     if(batch_in != 1){
         results.push_back(result);
         return results;
@@ -519,7 +520,7 @@ std::vector<std::string> SenseVoiceSmall::Forward(float** din, int* len, bool in
         float* floatData = outputTensor[0].GetTensorMutableData<float>();
         std::vector<int64_t> outputShape = outputTensor[0].GetTensorTypeAndShapeInfo().GetShape();
 
-        result = CTCSearch(floatData, paraformer_length, outputShape, sample_rate);
+        result = CTCSearch(floatData, paraformer_length, outputShape);
     }
     catch (std::exception const &e)
     {
