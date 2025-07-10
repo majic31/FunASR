@@ -302,14 +302,16 @@ void SenseVoiceSmall::LoadCmvn(const char *filename)
     }
 }
 
-string SenseVoiceSmall::CTCSearch(float * in, std::vector<int32_t> paraformer_length, std::vector<int64_t> outputShape)
+string SenseVoiceSmall::CTCSearch(float * in, std::vector<int32_t> paraformer_length, std::vector<int64_t> outputShape, int sample_rate, float frame_duration_sec)
 {
     std::string unicodeChar = "▁";
     int32_t vocab_size = outputShape[2];
 
     std::vector<int64_t> tokens;
+    std::vector<float> timestamp_list;
     std::string text="";
     int32_t prev_id = -1;
+    bool is_start_token = false;   // token开始的标记
     for (int32_t t = 0; t != paraformer_length[0]; ++t) {
         auto y = std::distance(
             static_cast<const float *>(in),
@@ -318,10 +320,22 @@ string SenseVoiceSmall::CTCSearch(float * in, std::vector<int32_t> paraformer_le
                 static_cast<const float *>(in) + vocab_size));
         in += vocab_size;
 
+        if ( ( (y == blank_id) || (y != blank_id && y != prev_id) ) && is_start_token == true){
+            is_start_token = false;
+            timestamp_list.push_back(t * frame_duration_sec)
+        }
+
         if (y != blank_id && y != prev_id) {
+            if (tokens.size() >= 3){
+                timestamp_list.push_back(t * frame_duration_sec)
+                is_start_token = true;
+            }
             tokens.push_back(y);
         }
         prev_id = y;
+    }
+    if (is_start_token == true){
+        timestamp_list.push_back((paraformer_length[0]-1) * frame_duration_sec)
     }
     string str_lang = "";
     string str_emo = "";
@@ -351,7 +365,7 @@ string SenseVoiceSmall::CTCSearch(float * in, std::vector<int32_t> paraformer_le
         }
     }
 
-    return str_lang + str_emo + str_event + " " + text;
+    return str_lang + str_emo + str_event + " " + text + "|";
 }
 
 string SenseVoiceSmall::GreedySearch(float * in, int n_len,  int64_t token_nums, bool is_stamp, std::vector<float> us_alphas, std::vector<float> us_cif_peak)
@@ -428,12 +442,11 @@ std::vector<std::vector<float>> SenseVoiceSmall::CompileHotwordEmbedding(std::st
     return hw_emb;
 }
 
-std::vector<std::string> SenseVoiceSmall::Forward(float** din, int* len, bool input_finished, std::string svs_lang, bool svs_itn, int batch_in)
+std::vector<std::string> SenseVoiceSmall::Forward(float** din, int* len, bool input_finished, std::string svs_lang, bool svs_itn, int batch_in, int sample_rate)
 {
     std::vector<std::string> results;
     string result="";
     int32_t in_feat_dim = fbank_opts_.mel_opts.num_bins;
-
     if(batch_in != 1){
         results.push_back(result);
         return results;
@@ -506,7 +519,7 @@ std::vector<std::string> SenseVoiceSmall::Forward(float** din, int* len, bool in
         float* floatData = outputTensor[0].GetTensorMutableData<float>();
         std::vector<int64_t> outputShape = outputTensor[0].GetTensorTypeAndShapeInfo().GetShape();
 
-        result = CTCSearch(floatData, paraformer_length, outputShape);
+        result = CTCSearch(floatData, paraformer_length, outputShape, sample_rate);
     }
     catch (std::exception const &e)
     {

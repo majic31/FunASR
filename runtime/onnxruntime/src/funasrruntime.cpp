@@ -259,7 +259,7 @@
 			}
 			vector<string> msg_batch;
 			if(offline_stream->GetModelType() == MODEL_SVS){
-				msg_batch = (offline_stream->asr_handle)->Forward(buff, len, true, svs_lang, svs_itn, batch_in);
+				msg_batch = (offline_stream->asr_handle)->Forward(buff, len, true, svs_lang, svs_itn, batch_in, sampling_rate);
 			}else{
 				msg_batch = (offline_stream->asr_handle)->Forward(buff, len, true, hw_emb, dec_handle, batch_in);
 			}
