@@ -145,8 +145,9 @@ OfflineStream::OfflineStream(std::map<std::string, std::string>& model_path, int
     }
 #endif
     if(model_type == MODEL_SVS){
-        use_itn = false;
-        use_punc = false;
+        // added by maj. funasr can config itn and punc
+        //use_itn = false;
+        //use_punc = false;
     }
 }
 

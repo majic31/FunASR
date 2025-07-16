@@ -310,12 +310,17 @@
 			cur_stamp.erase(cur_stamp.length() - 1);
 			p_result->stamp += cur_stamp + "]";
 		}
-		if(offline_stream->UsePunc()){
+		// added by maj. 如果有punc模型，并且 （model是paraformer 则使用punc模型），或者 （模型是svs并且没有打开svs_itn，则使用punc模型，这是避免重复）
+		if(offline_stream->UsePunc() &&
+		    ((offline_stream->GetModelType() == MODEL_PARA) ||
+		    (offline_stream->GetModelType() == MODEL_SVS && !svs_itn))){
 			string punc_res = (offline_stream->punc_handle)->AddPunc((p_result->msg).c_str(), lang);
 			p_result->msg = punc_res;
 		}
 #if !defined(__APPLE__)
-		if(offline_stream->UseITN() && itn){
+        // added by maj: 如果有itn模型，并且 (itn开关开启，并且是paraformer模型，则使用itn)，或者（有itn模型，且是svs模型，且svs_itn关闭，则使用itn模型，这是避免重复）
+		if((offline_stream->UseITN() && itn) &&
+		   ((offline_stream->GetModelType() == MODEL_PARA) || (offline_stream->GetModelType() == MODEL_SVS && !svs_itn))){
 			string msg_itn = offline_stream->itn_handle->Normalize(p_result->msg);
 			if(!(p_result->stamp).empty()){
 				std::string new_stamp = funasr::TimestampSmooth(p_result->msg, msg_itn, p_result->stamp);

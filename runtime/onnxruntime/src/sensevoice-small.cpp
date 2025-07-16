@@ -328,7 +328,7 @@ string SenseVoiceSmall::CTCSearch(float * in, std::vector<int32_t> paraformer_le
         }
 
         if (y != blank_id && y != prev_id) {
-            if (tokens.size() >= 3){
+            if (tokens.size() >= 4){
                 timestamp_list.push_back(t * frame_duration_sec);
                 is_start_token = true;
             }
@@ -375,7 +375,7 @@ string SenseVoiceSmall::CTCSearch(float * in, std::vector<int32_t> paraformer_le
         }
     }
     // return str_lang + str_emo + str_event + " " + text + "|";
-    return text + " | " + oss.str();
+    return text + " | " + oss.str() + " | " + str_lang + "," + str_emo + "," + str_event;
 }
 
 string SenseVoiceSmall::GreedySearch(float * in, int n_len,  int64_t token_nums, bool is_stamp, std::vector<float> us_alphas, std::vector<float> us_cif_peak)

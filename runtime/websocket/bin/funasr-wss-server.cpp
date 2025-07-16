@@ -275,12 +275,15 @@ int main(int argc, char* argv[]) {
             found = s_asr_path.find(MODEL_SVS);
             if (found != std::string::npos) {
                 model_path["model-revision"]="v2.0.5";
+                // added by maj, sensevoice can use itn and punc
+                /*
                 s_itn_path="";
                 model_path[ITN_DIR]="";
                 s_lm_path="";
                 model_path[LM_DIR]="";
                 s_punc_path="";
                 model_path[PUNC_DIR]="";
+                */
             }
 
             if (use_gpu_){
