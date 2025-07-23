@@ -4,16 +4,18 @@
 #  MIT License  (https://opensource.org/licenses/MIT)
 
 from pathlib import Path
-from funasr_onnx import SenseVoiceSmall
+
+from funasr_onnx.sensevoice_bin_hotword import SenseVoiceSmall
 from funasr_onnx.utils.postprocess_utils import rich_transcription_postprocess
 
 
-model_dir = "iic/SenseVoiceSmall"
+model_dir = "dengcunqin/SenseVoiceSmall_hotword"
 
 model = SenseVoiceSmall(model_dir, batch_size=10, quantize=False)
 
 # inference
-wav_or_scp = ["{}/.cache/modelscope/hub/{}/example/en.mp3".format(Path.home(), model_dir)]
-wav_or_scp = ["/Users/majie/data/empty/R003ea91910448_20250521131923.wav"]
-res = model("/Users/majie/data/R002f1dcf10892_20250704152817.wav", language="auto", use_itn=True)
+wav_or_scp = ["/Users/majie/project/stress_test/data/tmp/RC00be39b310465_20241009000102.wav",
+              "/Users/majie/Downloads/普通话转写/标准/R00bb4a0210206_20250114135859.wav"]
+
+res = model(wav_or_scp, language="auto", use_itn=True, hotwords_str='',hotwords_score=1.0)
 print([rich_transcription_postprocess(i) for i in res])

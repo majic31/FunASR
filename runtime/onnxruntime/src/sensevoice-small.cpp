@@ -343,7 +343,7 @@ string SenseVoiceSmall::CTCSearch(float * in, std::vector<int32_t> paraformer_le
     string str_emo = "";
     string str_event = "";
     string str_itn = "";
-    if(tokens.size() >=3){
+    if(tokens.size() >= 4){
         str_lang  = vocab->Id2String(tokens[0]);
         str_emo   = vocab->Id2String(tokens[1]);
         str_event = vocab->Id2String(tokens[2]);

@@ -115,6 +115,7 @@ async def record_microphone():
             "is_speaking": True,
             "hotwords": hotword_msg,
             "itn": use_itn,
+            "svs_itn": False
         }
     )
     # voices.put(message)
@@ -206,6 +207,7 @@ async def record_from_scp(chunk_begin, chunk_size):
                 "is_speaking": True,
                 "hotwords": hotword_msg,
                 "itn": use_itn,
+                "svs_itn": False
             }
         )
 
