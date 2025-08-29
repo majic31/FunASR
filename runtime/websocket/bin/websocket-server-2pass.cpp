@@ -345,7 +345,7 @@ void WebSocketServer::check_and_clean_connection() {
         data_msg->msg["is_eof"]=true;
         guard_decoder.unlock();
         to_remove.push_back(hdl);
-        LOG(INFO)<<"connection is closed.";
+        LOG(INFO)<<"connection is closed. reason="<< e.what();
         
       }
       iter++;

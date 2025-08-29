@@ -605,8 +605,9 @@
 				cur_stamp.erase(cur_stamp.length() - 1);
 				p_result->stamp += cur_stamp + "]";
 			}
-
-			if (tpass_stream->GetModelType() == MODEL_PARA){
+			// added by maj. 如果有punc模型，并且 （model是paraformer 则使用punc模型），或者 （模型是svs并且关闭svs_itn），则使用punc模型
+            if ((tpass_stream->GetModelType() == MODEL_PARA) ||
+		    (tpass_stream->GetModelType() == MODEL_SVS && !svs_itn)) {
 				string msg_punc = punc_online_handle->AddPunc(msg.c_str(), punc_cache[1]);
 				if(input_finished){
 					msg_punc += "。";
@@ -614,7 +615,9 @@
 				p_result->tpass_msg = msg_punc;
 
 #if !defined(__APPLE__)
-				if(tpass_stream->UseITN() && itn){
+                // added by maj. 如果有itn模型，并且 itn开关开启，并且是（paraformer模型)，或者（是svs模型，且svs_itn关闭），则使用itn模型
+				if((tpass_stream->UseITN() && itn) &&
+				((tpass_stream->GetModelType() == MODEL_PARA) || (tpass_stream->GetModelType() == MODEL_SVS && !svs_itn))){
 					string msg_itn = tpass_stream->itn_handle->Normalize(msg_punc);
 					// TimestampSmooth
 					if(!(p_result->stamp).empty()){
