@@ -416,8 +416,8 @@ private:
         idx_pre_chunk = 0;
         max_time_out = false;
         decibel.clear();
-        int data_buf_size = 0;
-        int data_buf_all_size = 0;
+        data_buf_size = 0;
+        data_buf_all_size = 0;
         waveform.clear();
         ResetDetection();
     }
