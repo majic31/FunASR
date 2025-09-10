@@ -387,8 +387,8 @@ private:
     int idx_pre_chunk = 0;
     bool max_time_out;
     std::vector<float> decibel;
-    int data_buf_size = 0;
-    int data_buf_all_size = 0;
+    long data_buf_size = 0;
+    long data_buf_all_size = 0;
     std::vector<float> waveform;
 
     void AllResetDetection() {
@@ -478,7 +478,7 @@ private:
             expected_sample_number += int(extra_sample);
         }
         if (end_point_is_sent_end) {
-            expected_sample_number = std::max(expected_sample_number, data_buf_size);
+            expected_sample_number = std::max<long>(expected_sample_number, data_buf_size);
         }
         if (data_buf_size < expected_sample_number) {
             std::cout << "error in calling pop data_buf\n";
