@@ -5,7 +5,7 @@
 #             docker buildx create --use   (只要不跟intel混用即可，一般default都是跟随平台的)
 #             docker buildx build --platform linux/arm64 -f DockerFile.offline.arm  -t funasr_offline:1.0_arm --load .
 #            在arm机器可以直接运行：
-#             docker build -f DockerFile.offline.arm  -t funasr_offline:v1.1_arm .
+#             docker build -f DockerFile.2pass.arm  -t funasr_2pass:v1.2_arm .
 # ---------------------------------------------------------------
 
 # 必须-使用阿里funasr作为基础镜像
@@ -13,7 +13,6 @@ FROM funasr:server_arm64
 
 # 尝试运行时的问题（不影响运行但会打日志），包括onnxconverter_common，修复ffmpeg不存在的问题等
 RUN apt-get update && apt-get install -y cron && \
-    pip install --upgrade pip && \
     pip install onnxconverter_common && \
     cd /usr/bin/ && ln -sf /workspace/ffmpeg-master-latest-linuxarm64-gpl-shared/bin/ffmpeg ffmpeg
 
@@ -25,5 +24,5 @@ RUN chmod +x websocket/bin/clean_log.sh && \
     chmod 0644 /etc/cron.d/clean_log && crontab /etc/cron.d/clean_log && touch /var/log/cron.log
 
 # 可以在这里面改模型
-COPY runtime/run_server_nobackground.sh .
-CMD cron -f & bash run_server_nobackground.sh
+COPY runtime/run_2pass_nobackground.sh .
+CMD cron -f & bash run_2pass_nobackground.sh

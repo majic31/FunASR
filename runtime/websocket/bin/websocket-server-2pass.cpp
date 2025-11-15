@@ -57,27 +57,27 @@ context_ptr WebSocketServer::on_tls_init(tls_mode mode,
   return ctx;
 }
 
-nlohmann::json handle_result(FUNASR_RESULT result) {
+nlohmann::json handle_result(std::string& wav_name, FUNASR_RESULT result) {
   websocketpp::lib::error_code ec;
   nlohmann::json jsonresult;
   jsonresult["text"] = "";
 
   std::string tmp_online_msg = FunASRGetResult(result, 0);
   if (tmp_online_msg != "") {
-    LOG(INFO) << "online_res :" << tmp_online_msg;
+    LOG(INFO) << "online_res :" << tmp_online_msg << " wav_name: " << wav_name;
     jsonresult["text"] = tmp_online_msg;
     jsonresult["mode"] = "2pass-online";
   }
   std::string tmp_tpass_msg = FunASRGetTpassResult(result, 0);
   if (tmp_tpass_msg != "") {
-    LOG(INFO) << "offline results : " << tmp_tpass_msg;
+    LOG(INFO) << "offline results : " << tmp_tpass_msg << " wav_name: " << wav_name;
     jsonresult["text"] = tmp_tpass_msg;
     jsonresult["mode"] = "2pass-offline";
   }
 
   std::string tmp_stamp_msg = FunASRGetStamp(result);
   if (tmp_stamp_msg != "") {
-    LOG(INFO) << "offline stamps : " << tmp_stamp_msg;
+    LOG(INFO) << "offline stamps : " << tmp_stamp_msg << " wav_name: " << wav_name;
     jsonresult["timestamp"] = tmp_stamp_msg;
   }
 
@@ -85,7 +85,7 @@ nlohmann::json handle_result(FUNASR_RESULT result) {
   if (tmp_stamp_sents != "") {
     try{
       nlohmann::json json_stamp = nlohmann::json::parse(tmp_stamp_sents);
-      LOG(INFO) << "offline stamp_sents : " << json_stamp;
+      LOG(INFO) << "offline stamp_sents : " << json_stamp << " wav_name: " << wav_name;
       jsonresult["stamp_sents"] = json_stamp;
     }catch (std::exception const &e)
     {
@@ -117,9 +117,9 @@ void WebSocketServer::do_decoder(
   // lock for each connection
   if(!tpass_online_handle){
     scoped_lock guard(thread_lock);
-	  LOG(INFO) << "tpass_online_handle  is free, return";
-	  msg["access_num"]=(int)msg["access_num"]-1;
-	  return;
+	LOG(INFO) << "tpass_online_handle  is free, return" << " wav_name: " << wav_name;
+	msg["access_num"]=(int)msg["access_num"]-1;
+	return;
   }
   try {
     FUNASR_RESULT Result = nullptr;
@@ -152,13 +152,13 @@ void WebSocketServer::do_decoder(
         }
       } catch (std::exception const& e) {
         scoped_lock guard(thread_lock);
-        LOG(ERROR) << e.what();
+        LOG(ERROR) << " wav_name: " << wav_name << e.what();
         msg["access_num"]=(int)msg["access_num"]-1;
         return;
       }
       if (Result) {
         websocketpp::lib::error_code ec;
-        nlohmann::json jsonresult = handle_result(Result);
+        nlohmann::json jsonresult = handle_result(wav_name, Result);
         jsonresult["wav_name"] = wav_name;
         jsonresult["is_final"] = false;
         if (jsonresult["text"] != "") {
@@ -189,7 +189,7 @@ void WebSocketServer::do_decoder(
         }
       } catch (std::exception const& e) {
         scoped_lock guard(thread_lock);
-        LOG(ERROR) << e.what();
+        LOG(ERROR) << " wav_name: " << wav_name << e.what();
         msg["access_num"]=(int)msg["access_num"]-1;
         return;
       }
@@ -200,7 +200,7 @@ void WebSocketServer::do_decoder(
       }
       if (Result) {
         websocketpp::lib::error_code ec;
-        nlohmann::json jsonresult = handle_result(Result);
+        nlohmann::json jsonresult = handle_result(wav_name, Result);
         jsonresult["wav_name"] = wav_name;
         jsonresult["is_final"] = true;
         if (is_ssl) {
@@ -230,7 +230,10 @@ void WebSocketServer::do_decoder(
     }
 
   } catch (std::exception const& e) {
-    std::cerr << "Error: " << e.what() << std::endl;
+    // std::cerr << "Error: " << e.what() << std::endl;
+    LOG(ERROR) << "Error: " << " wav_name: " << wav_name << e.what();
+  } catch (...) {
+    LOG(ERROR) << "Unknown non-standard exception caught. " << wav_name;
   }
   scoped_lock guard(thread_lock);
   msg["access_num"]=(int)msg["access_num"]-1;
