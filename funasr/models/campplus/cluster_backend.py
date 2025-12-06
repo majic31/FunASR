@@ -151,9 +151,12 @@ class ClusterBackend(torch.nn.Module):
         # clustering and return the labels
         k = params["oracle_num"] if "oracle_num" in params else None
         assert len(X.shape) == 2, "modelscope error: the shape of input should be [N, C]"
-        if X.shape[0] < 20:
+        # maj test save X for test
+        # np.save('/tmp/test_X.npy', X)
+        # maj test 这里从20调整为3，认为是3个段以上都可以进行聚类
+        if X.shape[0] < 3:
             return np.zeros(X.shape[0], dtype="int")
-        if X.shape[0] < 2048 or k is not None:
+        if X.shape[0] < 4096 or k is not None:
             # unexpected corner case
             labels = self.spectral_cluster(X, k)
         else:
