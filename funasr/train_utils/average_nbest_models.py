@@ -30,7 +30,10 @@ def _get_checkpoint_paths(output_dir: str, last_n: int = 5, use_deepspeed=False,
                 map_location="cpu",
             )
         avg_keep_nbest_models_type = checkpoint["avg_keep_nbest_models_type"]
-        val_step_or_epoch = checkpoint[f"val_{avg_keep_nbest_models_type}_step_or_epoch"]
+        if "saved_ckpts" in checkpoint and len(checkpoint["saved_ckpts"]) > 0:
+            val_step_or_epoch = checkpoint["saved_ckpts"]
+        else:
+            val_step_or_epoch = checkpoint[f"val_{avg_keep_nbest_models_type}_step_or_epoch"]
         sorted_items = sorted(val_step_or_epoch.items(), key=lambda x: x[1], reverse=True)
         sorted_items = (
             sorted_items[:last_n] if avg_keep_nbest_models_type == "acc" else sorted_items[-last_n:]
