@@ -18,6 +18,7 @@ def main():
     m.eval()
 
     wav_path = f"{kwargs['model_path']}/example/zh.mp3"
+    wav_path = f"/tmp/R007f7b7510952_20260212124336.wav"
     res = m.inference(data_in=[wav_path], **kwargs)
     text = res[0][0]
     print(text)

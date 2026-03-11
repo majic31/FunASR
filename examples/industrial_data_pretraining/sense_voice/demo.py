@@ -65,7 +65,6 @@ token_int = [10860, 10153, 18339, 9957, 13190, 10153, 17692, 10153, 10767, 13185
 # zh with timestamp
 res = model.generate(
     # input=f"/Users/majie/data/R00286cdf10379_20250424083149_16k.wav",
-    # input=f"/tmp/sample/粤语/R00d06da310515_20250513115423.wav",
     # input=f"/Users/majie/data/南海供电局/R003bd03810474_20250515084246.wav",
     # input = f"/Users/majie/project/stress_test/data/tmp/RC0084697210723_20241009000002.wav",
     # input = f"/Users/majie/data/测试数据.wav",
@@ -74,7 +73,8 @@ res = model.generate(
     # input = f"/Users/majie/project/stress_test/data/tmp/RC0084681410801_20241009000025.wav",
     # input = f"{model.model_path}/example/yue.mp3",
     # input = f"/Users/majie/data/007c8a9d31371da3224b90c123daa35d_0017_00013_part.wav",
-    input = f'/Volumes/KINGSTON/data/20250917-4007157501.wav',
+    # input = f'/Volumes/KINGSTON/data/20250917-4007157501.wav',
+    input = f'/Users/majie/data/problem/R00a54bd310843_20250924170324.wav',
     cache={},
     # language="zh",  # "zh", "en", "yue", "ja", "ko", "nospeech"
     use_itn=False,
@@ -82,7 +82,8 @@ res = model.generate(
     merge_vad=False,  #
     merge_length_s=15,
     output_timestamp=True,
-    sentence_timestamp=True
+    sentence_timestamp=True,
+    hotword='变压器'
 )
 
 # res = model.generate(
