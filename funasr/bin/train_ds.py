@@ -141,8 +141,12 @@ def main(**kwargs):
 
     model = trainer.warp_model(model, **kwargs)
 
-    kwargs["device"] = int(os.environ.get("LOCAL_RANK", 0))
-    trainer.device = int(os.environ.get("LOCAL_RANK", 0))
+    if device != "cpu":
+        kwargs["device"] = int(os.environ.get("LOCAL_RANK", 0))
+        trainer.device = int(os.environ.get("LOCAL_RANK", 0))
+    else:
+        kwargs["device"] = "cpu"
+        trainer.device = "cpu"
 
     model, optim, scheduler = trainer.warp_optim_scheduler(model, **kwargs)
 

@@ -67,6 +67,7 @@ using namespace std;
 #include "sensevoice-small.h"
 #ifdef USE_GPU
 #include "paraformer-torch.h"
+#include "sensevoice-small-torch.h"
 #endif
 #include "paraformer-online.h"
 #include "offline-stream.h"

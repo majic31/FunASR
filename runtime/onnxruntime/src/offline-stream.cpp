@@ -39,7 +39,14 @@ OfflineStream::OfflineStream(std::map<std::string, std::string>& model_path, int
     
         if(use_gpu){
             #ifdef USE_GPU
-            asr_handle = make_unique<ParaformerTorch>();
+            // Check if the model is SenseVoiceSmall; if so, use the specialized GPU class
+            if (model_path.at(MODEL_DIR).find(MODEL_SVS) != std::string::npos) {
+                asr_handle = make_unique<SenseVoiceTorch>();
+                model_type = MODEL_SVS;
+                LOG(INFO) << "GPU mode: Loading SenseVoiceTorch for SenseVoiceSmall";
+            } else {
+                asr_handle = make_unique<ParaformerTorch>();
+            }
             asr_handle->SetBatchSize(batch_size);
             #else
             LOG(ERROR) <<"GPU is not supported! CPU will be used! If you want to use GPU, please add -DGPU=ON when cmake";
