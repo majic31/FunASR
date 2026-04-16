@@ -10,40 +10,41 @@
 #else
 #include <unistd.h>
 #endif
-#include <fstream>
 #include "util.h"
+#include <fstream>
 
 // hotwords
 std::unordered_map<std::string, int> hws_map_;
-int fst_inc_wts_=20;
+int fst_inc_wts_ = 20;
 float global_beam_, lattice_beam_, am_scale_;
 
 using namespace std;
-void GetValue(TCLAP::ValueArg<std::string>& value_arg, string key,
-              std::map<std::string, std::string>& model_path) {
-    model_path.insert({key, value_arg.getValue()});
-    LOG(INFO) << key << " : " << value_arg.getValue();
+void GetValue(TCLAP::ValueArg<std::string> &value_arg, string key,
+              std::map<std::string, std::string> &model_path) {
+  model_path.insert({key, value_arg.getValue()});
+  LOG(INFO) << key << " : " << value_arg.getValue();
 }
 
-int main(int argc, char* argv[]) {
+int main(int argc, char *argv[]) {
 #ifdef _WIN32
-    #include <windows.h>
-    SetConsoleOutputCP(65001);
+#include <windows.h>
+  SetConsoleOutputCP(65001);
 #endif
   try {
 
     google::InitGoogleLogging(argv[0]);
     // 确保日志目录存在
     if (access("/workspace/FunASR/logs", F_OK) == -1) {
-        mkdir("/workspace/FunASR/logs", 0777);
+      mkdir("/workspace/FunASR/logs", 0777);
     }
     // 设置日志输出到文件，并禁止输出到stderr
-    FLAGS_logtostderr = false;         // 禁止直接输出到stderr
-    FLAGS_alsologtostderr = true;     // 如果需要同时输出到stderr和文件，可以设置为true
-    FLAGS_log_dir = "/workspace/FunASR/logs";   // 设置日志文件存储目录
+    FLAGS_logtostderr = false; // 禁止直接输出到stderr
+    FLAGS_alsologtostderr =
+        true; // 如果需要同时输出到stderr和文件，可以设置为true
+    FLAGS_log_dir = "/workspace/FunASR/logs"; // 设置日志文件存储目录
 
     // 设置每个日志文件的最大大小（以MB为单位）
-    FLAGS_max_log_size = 100;  // 100MB
+    FLAGS_max_log_size = 100; // 100MB
     std::string offline_version = "";
 #ifdef _WIN32
     offline_version = "0.1.0";
@@ -51,33 +52,32 @@ int main(int argc, char* argv[]) {
     TCLAP::CmdLine cmd("funasr-wss-server", ' ', offline_version);
     TCLAP::ValueArg<std::string> download_model_dir(
         "", "download-model-dir",
-        "Download model from Modelscope to download_model_dir",
-        false, "/workspace/models", "string");
+        "Download model from Modelscope to download_model_dir", false,
+        "/workspace/models", "string");
     TCLAP::ValueArg<std::string> model_dir(
         "", MODEL_DIR,
-        "default: /workspace/models/asr, the asr model path, which contains *.onnx/*.torchscript, config.yaml, am.mvn",
+        "default: /workspace/models/asr, the asr model path, which contains "
+        "*.onnx/*.torchscript, config.yaml, am.mvn",
         false, "/workspace/models/asr", "string");
     TCLAP::ValueArg<std::string> model_revision(
-        "", "model-revision",
-        "ASR model revision",
-        false, "v2.0.5", "string");
+        "", "model-revision", "ASR model revision", false, "v2.0.5", "string");
     TCLAP::ValueArg<std::string> quantize(
         "", QUANTIZE,
-        "true (Default), load the model of model_quant.onnx in model_dir. If set "
+        "true (Default), load the model of model_quant.onnx in model_dir. If "
+        "set "
         "false, load the model of model.onnx in model_dir",
         false, "true", "string");
     TCLAP::ValueArg<std::string> bladedisc(
-        "", BLADEDISC, 
-        "true (Default), load the model of bladedisc in model_dir.", 
-        false, "true", "string");
+        "", BLADEDISC,
+        "true (Default), load the model of bladedisc in model_dir.", false,
+        "true", "string");
     TCLAP::ValueArg<std::string> vad_dir(
         "", VAD_DIR,
-        "default: /workspace/models/vad, the vad model path, which contains model_quant.onnx, vad.yaml, vad.mvn",
+        "default: /workspace/models/vad, the vad model path, which contains "
+        "model_quant.onnx, vad.yaml, vad.mvn",
         false, "/workspace/models/vad", "string");
     TCLAP::ValueArg<std::string> vad_revision(
-        "", "vad-revision",
-        "VAD model revision",
-        false, "v2.0.6", "string");
+        "", "vad-revision", "VAD model revision", false, "v2.0.6", "string");
     TCLAP::ValueArg<std::string> vad_quant(
         "", VAD_QUANT,
         "true (Default), load the model of model_quant.onnx in vad_dir. If set "
@@ -85,16 +85,15 @@ int main(int argc, char* argv[]) {
         false, "true", "string");
     TCLAP::ValueArg<std::string> punc_dir(
         "", PUNC_DIR,
-        "default: /workspace/models/punc, the punc model path, which contains model_quant.onnx, punc.yaml", 
-        false, "/workspace/models/punc",
-        "string");
+        "default: /workspace/models/punc, the punc model path, which contains "
+        "model_quant.onnx, punc.yaml",
+        false, "/workspace/models/punc", "string");
     TCLAP::ValueArg<std::string> punc_revision(
-        "", "punc-revision",
-        "PUNC model revision",
-        false, "v2.0.5", "string");
+        "", "punc-revision", "PUNC model revision", false, "v2.0.5", "string");
     TCLAP::ValueArg<std::string> punc_quant(
         "", PUNC_QUANT,
-        "true (Default), load the model of model_quant.onnx in punc_dir. If set "
+        "true (Default), load the model of model_quant.onnx in punc_dir. If "
+        "set "
         "false, load the model of model.onnx in punc_dir",
         false, "true", "string");
     TCLAP::ValueArg<std::string> itn_dir(
@@ -115,28 +114,47 @@ int main(int argc, char* argv[]) {
     TCLAP::ValueArg<int> model_thread_num("", "model-thread-num",
                                           "model thread num", false, 1, "int");
 
-    TCLAP::ValueArg<std::string> certfile("", "certfile", 
-        "default: ../../../ssl_key/server.crt, path of certficate for WSS connection. if it is empty, it will be in WS mode.",
+    TCLAP::ValueArg<std::string> certfile(
+        "", "certfile",
+        "default: ../../../ssl_key/server.crt, path of certficate for WSS "
+        "connection. if it is empty, it will be in WS mode.",
         false, "../../../ssl_key/server.crt", "string");
-    TCLAP::ValueArg<std::string> keyfile("", "keyfile", 
-        "default: ../../../ssl_key/server.key, path of keyfile for WSS connection", 
+    TCLAP::ValueArg<std::string> keyfile(
+        "", "keyfile",
+        "default: ../../../ssl_key/server.key, path of keyfile for WSS "
+        "connection",
         false, "../../../ssl_key/server.key", "string");
 
-    TCLAP::ValueArg<float>    global_beam("", GLOB_BEAM, "the decoding beam for beam searching ", false, 3.0, "float");
-    TCLAP::ValueArg<float>    lattice_beam("", LAT_BEAM, "the lattice generation beam for beam searching ", false, 3.0, "float");
-    TCLAP::ValueArg<float>    am_scale("", AM_SCALE, "the acoustic scale for beam searching ", false, 10.0, "float");
+    TCLAP::ValueArg<float> global_beam("", GLOB_BEAM,
+                                       "the decoding beam for beam searching ",
+                                       false, 3.0, "float");
+    TCLAP::ValueArg<float> lattice_beam(
+        "", LAT_BEAM, "the lattice generation beam for beam searching ", false,
+        3.0, "float");
+    TCLAP::ValueArg<float> am_scale("", AM_SCALE,
+                                    "the acoustic scale for beam searching ",
+                                    false, 10.0, "float");
 
-    TCLAP::ValueArg<std::string> lm_dir("", LM_DIR,
-        "the LM model path, which contains compiled models: TLG.fst, config.yaml ", false, "damo/speech_ngram_lm_zh-cn-ai-wesp-fst", "string");
+    TCLAP::ValueArg<std::string> lm_dir(
+        "", LM_DIR,
+        "the LM model path, which contains compiled models: TLG.fst, "
+        "config.yaml ",
+        false, "damo/speech_ngram_lm_zh-cn-ai-wesp-fst", "string");
     TCLAP::ValueArg<std::string> lm_revision(
         "", "lm-revision", "LM model revision", false, "v1.0.2", "string");
-    TCLAP::ValueArg<std::string> hotword("", HOTWORD,
-        "the hotword file, one hotword perline, Format: Hotword Weight (could be: 阿里巴巴 20)", 
+    TCLAP::ValueArg<std::string> hotword(
+        "", HOTWORD,
+        "the hotword file, one hotword perline, Format: Hotword Weight (could "
+        "be: 阿里巴巴 20)",
         false, "/workspace/resources/hotwords.txt", "string");
-    TCLAP::ValueArg<std::int32_t> fst_inc_wts("", FST_INC_WTS, 
-        "the fst hotwords incremental bias", false, 20, "int32_t");
-    TCLAP::SwitchArg use_gpu("", INFER_GPU, "Whether to use GPU, default is false", false);
-    TCLAP::ValueArg<std::int32_t> batch_size("", BATCHSIZE, "batch_size for ASR model when using GPU", false, 4, "int32_t");
+    TCLAP::ValueArg<std::int32_t> fst_inc_wts(
+        "", FST_INC_WTS, "the fst hotwords incremental bias", false, 20,
+        "int32_t");
+    TCLAP::SwitchArg use_gpu("", INFER_GPU,
+                             "Whether to use GPU, default is false", false);
+    TCLAP::ValueArg<std::int32_t> batch_size(
+        "", BATCHSIZE, "batch_size for ASR model when using GPU", false, 4,
+        "int32_t");
 
     // add file
     cmd.add(hotword);
@@ -197,264 +215,291 @@ int main(int argc, char* argv[]) {
     int batch_size_ = batch_size.getValue();
 
     // Download model form Modelscope
-    try{
-        std::string s_download_model_dir = download_model_dir.getValue();
+    try {
+      std::string s_download_model_dir = download_model_dir.getValue();
 
-        std::string s_vad_path = model_path[VAD_DIR];
-        std::string s_vad_quant = model_path[VAD_QUANT];
-        std::string s_asr_path = model_path[MODEL_DIR];
-        std::string s_asr_quant = model_path[QUANTIZE];
-        std::string s_punc_path = model_path[PUNC_DIR];
-        std::string s_punc_quant = model_path[PUNC_QUANT];
-        std::string s_itn_path = model_path[ITN_DIR];
-        std::string s_lm_path = model_path[LM_DIR];
-        std::string s_blade = model_path[BLADEDISC];
+      std::string s_vad_path = model_path[VAD_DIR];
+      std::string s_vad_quant = model_path[VAD_QUANT];
+      std::string s_asr_path = model_path[MODEL_DIR];
+      std::string s_asr_quant = model_path[QUANTIZE];
+      std::string s_punc_path = model_path[PUNC_DIR];
+      std::string s_punc_quant = model_path[PUNC_QUANT];
+      std::string s_itn_path = model_path[ITN_DIR];
+      std::string s_lm_path = model_path[LM_DIR];
+      std::string s_blade = model_path[BLADEDISC];
 
-        std::string python_cmd = "python -m funasr.download.runtime_sdk_download_tool ";
+      std::string python_cmd =
+          "python -m funasr.download.runtime_sdk_download_tool ";
 
-        if(vad_dir.isSet() && !s_vad_path.empty()){
-            std::string python_cmd_vad;
-            std::string down_vad_path;
-            std::string down_vad_model;  
+      if (vad_dir.isSet() && !s_vad_path.empty()) {
+        std::string python_cmd_vad;
+        std::string down_vad_path;
+        std::string down_vad_model;
 
-            if (access(s_vad_path.c_str(), F_OK) == 0){
-                // local
-                python_cmd_vad = python_cmd + " --type onnx " + " --quantize " + s_vad_quant + " --model-name " + s_vad_path + " --export-dir ./ " + " --model_revision " + model_path["vad-revision"];
-                down_vad_path  = s_vad_path;
-            }else{
-                // modelscope
-                LOG(INFO) << "Download model: " <<  s_vad_path << " from modelscope: ";
-                python_cmd_vad = python_cmd + " --type onnx " + " --quantize " + s_vad_quant + " --model-name " + s_vad_path + " --export-dir " + s_download_model_dir + " --model_revision " + model_path["vad-revision"];
-                down_vad_path  = s_download_model_dir+"/"+s_vad_path;
-            }
-                
-            int ret = system(python_cmd_vad.c_str());
-            if(ret !=0){
-                LOG(INFO) << "Failed to download model from modelscope. If you set local vad model path, you can ignore the errors.";
-            }
-            down_vad_model = down_vad_path+"/model_quant.onnx";
-            if(s_vad_quant=="false" || s_vad_quant=="False" || s_vad_quant=="FALSE"){
-                down_vad_model = down_vad_path+"/model.onnx";
-            }
-
-            if (access(down_vad_model.c_str(), F_OK) != 0){
-                LOG(ERROR) << down_vad_model << " do not exists."; 
-                exit(-1);
-            }else{
-                model_path[VAD_DIR]=down_vad_path;
-                LOG(INFO) << "Set " << VAD_DIR << " : " << model_path[VAD_DIR];
-            }
-        }else{
-            LOG(INFO) << "VAD model is not set, use default.";
-        }
-
-        if(model_dir.isSet() && !s_asr_path.empty()){
-            std::string python_cmd_asr;
-            std::string down_asr_path;
-            std::string down_asr_model;
-            std::string model_type = "onnx";
-
-            // modify model-revision by model name
-            size_t found = s_asr_path.find("speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404");
-            if (found != std::string::npos) {
-                model_path["model-revision"]="v2.0.5";
-            }
-
-            found = s_asr_path.find("speech_paraformer-large-contextual_asr_nat-zh-cn-16k-common-vocab8404");
-            if (found != std::string::npos) {
-                model_path["model-revision"]="v2.0.5";
-            }
-
-            found = s_asr_path.find("speech_paraformer-large_asr_nat-en-16k-common-vocab10020");
-            if (found != std::string::npos) {
-                model_path["model-revision"]="v2.0.5";
-                s_itn_path="";
-                s_lm_path="";
-            }
-
-            found = s_asr_path.find(MODEL_SVS);
-            if (found != std::string::npos) {
-                model_path["model-revision"]="v2.0.5";
-                // added by maj, sensevoice can use itn and punc
-                /*
-                s_itn_path="";
-                model_path[ITN_DIR]="";
-                s_lm_path="";
-                model_path[LM_DIR]="";
-                s_punc_path="";
-                model_path[PUNC_DIR]="";
-                */
-            }
-
-            if (use_gpu_){
-                model_type = "torchscript";
-                if (s_blade=="true" || s_blade=="True" || s_blade=="TRUE"){
-                    model_type = "bladedisc";
-                }
-            }
-
-            if (access(s_asr_path.c_str(), F_OK) == 0){
-                // local
-                python_cmd_asr = python_cmd + " --type " + model_type + " --quantize " + s_asr_quant + " --model-name " + s_asr_path + " --export-dir ./ " + " --model_revision " + model_path["model-revision"];
-                down_asr_path  = s_asr_path;
-            }else{
-                // modelscope
-                LOG(INFO) << "Download model: " <<  s_asr_path << " from modelscope: ";
-                python_cmd_asr = python_cmd + " --type " + model_type + " --quantize " + s_asr_quant + " --model-name " + s_asr_path + " --export-dir " + s_download_model_dir + " --model_revision " + model_path["model-revision"];
-                down_asr_path  = s_download_model_dir+"/"+s_asr_path;
-            }
-            
-            down_asr_model = down_asr_path+"/model_quant.onnx";
-            if(s_asr_quant=="false" || s_asr_quant=="False" || s_asr_quant=="FALSE"){
-                down_asr_model = down_asr_path+"/model.onnx";
-            }
-
-            if (use_gpu_){
-                down_asr_model = down_asr_path+"/model.torchscript";
-                if (s_blade=="true" || s_blade=="True" || s_blade=="TRUE"){
-                    down_asr_model = down_asr_path+"/model_blade.torchscript";
-                }
-            }
-
-            int ret = system(python_cmd_asr.c_str());
-            if(ret !=0){
-                LOG(INFO) << "Failed to download model from modelscope. If you set local asr model path, you can ignore the errors.";
-            }
-
-            if (access(down_asr_model.c_str(), F_OK) != 0){
-                LOG(ERROR) << down_asr_model << " do not exists.";
-                exit(-1);
-            }else{
-                model_path[MODEL_DIR]=down_asr_path;
-                LOG(INFO) << "Set " << MODEL_DIR << " : " << model_path[MODEL_DIR];
-            }
-        }else{
-            LOG(INFO) << "ASR model is not set, use default.";
-        }
-
-        if (!s_itn_path.empty()) {
-            std::string python_cmd_itn;
-            std::string down_itn_path;
-            std::string down_itn_model;
-
-            if (access(s_itn_path.c_str(), F_OK) == 0) {
-                // local
-                python_cmd_itn = python_cmd + " --type onnx " + " --model-name " + s_itn_path +
-                                    " --export-dir ./ " + " --model_revision " +
-                                    model_path["itn-revision"] + " --export False ";
-                down_itn_path = s_itn_path;
-            } else {
-                // modelscope
-                LOG(INFO) << "Download model: " << s_itn_path
-                            << " from modelscope : "; 
-                python_cmd_itn = python_cmd + " --type onnx " + " --model-name " +
-                        s_itn_path +
-                        " --export-dir " + s_download_model_dir +
-                        " --model_revision " + model_path["itn-revision"]
-                        + " --export False "; 
-                down_itn_path  =
-                        s_download_model_dir +
-                        "/" + s_itn_path;
-            }
-
-            int ret = system(python_cmd_itn.c_str());
-            if (ret != 0) {
-                LOG(INFO) << "Failed to download model from modelscope. If you set local itn model path, you can ignore the errors.";
-            }
-            down_itn_model = down_itn_path + "/zh_itn_tagger.fst";
-
-            if (access(down_itn_model.c_str(), F_OK) != 0) {
-                LOG(ERROR) << down_itn_model << " do not exists.";
-                exit(-1);
-            } else {
-                model_path[ITN_DIR] = down_itn_path;
-                LOG(INFO) << "Set " << ITN_DIR << " : " << model_path[ITN_DIR];
-            }
+        if (access(s_vad_path.c_str(), F_OK) == 0) {
+          // local
+          python_cmd_vad = python_cmd + " --type onnx " + " --quantize " +
+                           s_vad_quant + " --model-name " + s_vad_path +
+                           " --export-dir ./ " + " --model_revision " +
+                           model_path["vad-revision"];
+          down_vad_path = s_vad_path;
         } else {
-            LOG(INFO) << "ITN model is not set, not executed.";
+          // modelscope
+          LOG(INFO) << "Download model: " << s_vad_path << " from modelscope: ";
+          python_cmd_vad = python_cmd + " --type onnx " + " --quantize " +
+                           s_vad_quant + " --model-name " + s_vad_path +
+                           " --export-dir " + s_download_model_dir +
+                           " --model_revision " + model_path["vad-revision"];
+          down_vad_path = s_download_model_dir + "/" + s_vad_path;
         }
 
-        if (!s_lm_path.empty() && s_lm_path != "NONE" && s_lm_path != "none") {
-            std::string python_cmd_lm;
-            std::string down_lm_path;
-            std::string down_lm_model;
+        int ret = system(python_cmd_vad.c_str());
+        if (ret != 0) {
+          LOG(INFO) << "Failed to download model from modelscope. If you set "
+                       "local vad model path, you can ignore the errors.";
+        }
+        down_vad_model = down_vad_path + "/model_quant.onnx";
+        if (s_vad_quant == "false" || s_vad_quant == "False" ||
+            s_vad_quant == "FALSE") {
+          down_vad_model = down_vad_path + "/model.onnx";
+        }
 
-            if (access(s_lm_path.c_str(), F_OK) == 0) {
-                // local
-                python_cmd_lm = python_cmd + " --type onnx " + " --model-name " + s_lm_path +
-                                    " --export-dir ./ " + " --model_revision " +
-                                    model_path["lm-revision"] + " --export False ";
-                down_lm_path = s_lm_path;
-            } else {
-                // modelscope
-                LOG(INFO) << "Download model: " << s_lm_path
-                            << " from modelscope : "; 
-                python_cmd_lm = python_cmd + " --type onnx " + " --model-name " +
-                        s_lm_path +
-                        " --export-dir " + s_download_model_dir +
-                        " --model_revision " + model_path["lm-revision"]
-                        + " --export False "; 
-                down_lm_path  =
-                        s_download_model_dir +
-                        "/" + s_lm_path;
-            }
-
-            int ret = system(python_cmd_lm.c_str());
-            if (ret != 0) {
-                LOG(INFO) << "Failed to download model from modelscope. If you set local lm model path, you can ignore the errors.";
-            }
-            down_lm_model = down_lm_path + "/TLG.fst";
-
-            if (access(down_lm_model.c_str(), F_OK) != 0) {
-                LOG(ERROR) << down_lm_model << " do not exists.";
-                exit(-1);
-            } else {
-                model_path[LM_DIR] = down_lm_path;
-                LOG(INFO) << "Set " << LM_DIR << " : " << model_path[LM_DIR];
-            }
+        if (access(down_vad_model.c_str(), F_OK) != 0) {
+          LOG(ERROR) << down_vad_model << " do not exists.";
+          exit(-1);
         } else {
-            LOG(INFO) << "LM model is not set, not executed.";
-            model_path[LM_DIR] = "";
+          model_path[VAD_DIR] = down_vad_path;
+          LOG(INFO) << "Set " << VAD_DIR << " : " << model_path[VAD_DIR];
+        }
+      } else {
+        LOG(INFO) << "VAD model is not set, use default.";
+      }
+
+      if (model_dir.isSet() && !s_asr_path.empty()) {
+        std::string python_cmd_asr;
+        std::string down_asr_path;
+        std::string down_asr_model;
+        std::string model_type = "onnx";
+
+        // modify model-revision by model name
+        size_t found = s_asr_path.find("speech_paraformer-large-vad-punc_asr_"
+                                       "nat-zh-cn-16k-common-vocab8404");
+        if (found != std::string::npos) {
+          model_path["model-revision"] = "v2.0.5";
         }
 
-        if(punc_dir.isSet() && !s_punc_path.empty()){
-            std::string python_cmd_punc;
-            std::string down_punc_path;
-            std::string down_punc_model;  
-
-            if (access(s_punc_path.c_str(), F_OK) == 0){
-                // local
-                python_cmd_punc = python_cmd + " --type onnx " + "--quantize " + s_punc_quant + " --model-name " + s_punc_path + " --export-dir ./ " + " --model_revision " + model_path["punc-revision"];
-                down_punc_path  = s_punc_path;
-            }else{
-                // modelscope
-                LOG(INFO) << "Download model: " <<  s_punc_path << " from modelscope: ";
-                python_cmd_punc = python_cmd + " --type onnx " + "--quantize " + s_punc_quant + " --model-name " + s_punc_path + " --export-dir " + s_download_model_dir + " --model_revision " + model_path["punc-revision"];
-                down_punc_path  = s_download_model_dir+"/"+s_punc_path;
-            }
-                
-            int ret = system(python_cmd_punc.c_str());
-            if(ret !=0){
-                LOG(INFO) << "Failed to download model from modelscope. If you set local punc model path, you can ignore the errors.";
-            }
-            down_punc_model = down_punc_path+"/model_quant.onnx";
-            if(s_punc_quant=="false" || s_punc_quant=="False" || s_punc_quant=="FALSE"){
-                down_punc_model = down_punc_path+"/model.onnx";
-            }
-
-            if (access(down_punc_model.c_str(), F_OK) != 0){
-                LOG(ERROR) << down_punc_model << " do not exists."; 
-                exit(-1);
-            }else{
-                model_path[PUNC_DIR]=down_punc_path;
-                LOG(INFO) << "Set " << PUNC_DIR << " : " << model_path[PUNC_DIR];
-            }
-        }else{
-            LOG(INFO) << "PUNC model is not set, use default.";
+        found = s_asr_path.find("speech_paraformer-large-contextual_asr_nat-zh-"
+                                "cn-16k-common-vocab8404");
+        if (found != std::string::npos) {
+          model_path["model-revision"] = "v2.0.5";
         }
 
-    } catch (std::exception const& e) {
-        LOG(ERROR) << "Error: " << e.what();
+        found = s_asr_path.find(
+            "speech_paraformer-large_asr_nat-en-16k-common-vocab10020");
+        if (found != std::string::npos) {
+          model_path["model-revision"] = "v2.0.5";
+          s_itn_path = "";
+          s_lm_path = "";
+        }
+
+        found = s_asr_path.find(MODEL_SVS);
+        if (found != std::string::npos) {
+          model_path["model-revision"] = "master";
+          // added by maj, sensevoice can use itn and punc
+          /*
+          s_itn_path="";
+          model_path[ITN_DIR]="";
+          s_lm_path="";
+          model_path[LM_DIR]="";
+          s_punc_path="";
+          model_path[PUNC_DIR]="";
+          */
+        }
+
+        if (use_gpu_) {
+          model_type = "torchscript";
+          if (s_blade == "true" || s_blade == "True" || s_blade == "TRUE") {
+            model_type = "bladedisc";
+          }
+        }
+
+        if (access(s_asr_path.c_str(), F_OK) == 0) {
+          // local
+          python_cmd_asr = python_cmd + " --type " + model_type +
+                           " --quantize " + s_asr_quant + " --model-name " +
+                           s_asr_path + " --export-dir ./ " +
+                           " --model_revision " + model_path["model-revision"];
+          down_asr_path = s_asr_path;
+        } else {
+          // modelscope
+          LOG(INFO) << "Download model: " << s_asr_path << " from modelscope: ";
+          python_cmd_asr = python_cmd + " --type " + model_type +
+                           " --quantize " + s_asr_quant + " --model-name " +
+                           s_asr_path + " --export-dir " +
+                           s_download_model_dir + " --model_revision " +
+                           model_path["model-revision"];
+          down_asr_path = s_download_model_dir + "/" + s_asr_path;
+        }
+
+        down_asr_model = down_asr_path + "/model_quant.onnx";
+        if (s_asr_quant == "false" || s_asr_quant == "False" ||
+            s_asr_quant == "FALSE") {
+          down_asr_model = down_asr_path + "/model.onnx";
+        }
+
+        if (use_gpu_) {
+          down_asr_model = down_asr_path + "/model.torchscript";
+          if (s_blade == "true" || s_blade == "True" || s_blade == "TRUE") {
+            down_asr_model = down_asr_path + "/model_blade.torchscript";
+          }
+        }
+
+        int ret = system(python_cmd_asr.c_str());
+        if (ret != 0) {
+          LOG(INFO) << "Failed to download model from modelscope. If you set "
+                       "local asr model path, you can ignore the errors.";
+        }
+
+        if (access(down_asr_model.c_str(), F_OK) != 0) {
+          LOG(ERROR) << down_asr_model << " do not exists.";
+          exit(-1);
+        } else {
+          model_path[MODEL_DIR] = down_asr_path;
+          LOG(INFO) << "Set " << MODEL_DIR << " : " << model_path[MODEL_DIR];
+        }
+      } else {
+        LOG(INFO) << "ASR model is not set, use default.";
+      }
+
+      if (!s_itn_path.empty()) {
+        std::string python_cmd_itn;
+        std::string down_itn_path;
+        std::string down_itn_model;
+
+        if (access(s_itn_path.c_str(), F_OK) == 0) {
+          // local
+          python_cmd_itn = python_cmd + " --type onnx " + " --model-name " +
+                           s_itn_path + " --export-dir ./ " +
+                           " --model_revision " + model_path["itn-revision"] +
+                           " --export False ";
+          down_itn_path = s_itn_path;
+        } else {
+          // modelscope
+          LOG(INFO) << "Download model: " << s_itn_path
+                    << " from modelscope : ";
+          python_cmd_itn = python_cmd + " --type onnx " + " --model-name " +
+                           s_itn_path + " --export-dir " +
+                           s_download_model_dir + " --model_revision " +
+                           model_path["itn-revision"] + " --export False ";
+          down_itn_path = s_download_model_dir + "/" + s_itn_path;
+        }
+
+        int ret = system(python_cmd_itn.c_str());
+        if (ret != 0) {
+          LOG(INFO) << "Failed to download model from modelscope. If you set "
+                       "local itn model path, you can ignore the errors.";
+        }
+        down_itn_model = down_itn_path + "/zh_itn_tagger.fst";
+
+        if (access(down_itn_model.c_str(), F_OK) != 0) {
+          LOG(ERROR) << down_itn_model << " do not exists.";
+          exit(-1);
+        } else {
+          model_path[ITN_DIR] = down_itn_path;
+          LOG(INFO) << "Set " << ITN_DIR << " : " << model_path[ITN_DIR];
+        }
+      } else {
+        LOG(INFO) << "ITN model is not set, not executed.";
+      }
+
+      if (!s_lm_path.empty() && s_lm_path != "NONE" && s_lm_path != "none") {
+        std::string python_cmd_lm;
+        std::string down_lm_path;
+        std::string down_lm_model;
+
+        if (access(s_lm_path.c_str(), F_OK) == 0) {
+          // local
+          python_cmd_lm = python_cmd + " --type onnx " + " --model-name " +
+                          s_lm_path + " --export-dir ./ " +
+                          " --model_revision " + model_path["lm-revision"] +
+                          " --export False ";
+          down_lm_path = s_lm_path;
+        } else {
+          // modelscope
+          LOG(INFO) << "Download model: " << s_lm_path << " from modelscope : ";
+          python_cmd_lm = python_cmd + " --type onnx " + " --model-name " +
+                          s_lm_path + " --export-dir " + s_download_model_dir +
+                          " --model_revision " + model_path["lm-revision"] +
+                          " --export False ";
+          down_lm_path = s_download_model_dir + "/" + s_lm_path;
+        }
+
+        int ret = system(python_cmd_lm.c_str());
+        if (ret != 0) {
+          LOG(INFO) << "Failed to download model from modelscope. If you set "
+                       "local lm model path, you can ignore the errors.";
+        }
+        down_lm_model = down_lm_path + "/TLG.fst";
+
+        if (access(down_lm_model.c_str(), F_OK) != 0) {
+          LOG(ERROR) << down_lm_model << " do not exists.";
+          exit(-1);
+        } else {
+          model_path[LM_DIR] = down_lm_path;
+          LOG(INFO) << "Set " << LM_DIR << " : " << model_path[LM_DIR];
+        }
+      } else {
+        LOG(INFO) << "LM model is not set, not executed.";
+        model_path[LM_DIR] = "";
+      }
+
+      if (punc_dir.isSet() && !s_punc_path.empty()) {
+        std::string python_cmd_punc;
+        std::string down_punc_path;
+        std::string down_punc_model;
+
+        if (access(s_punc_path.c_str(), F_OK) == 0) {
+          // local
+          python_cmd_punc = python_cmd + " --type onnx " + "--quantize " +
+                            s_punc_quant + " --model-name " + s_punc_path +
+                            " --export-dir ./ " + " --model_revision " +
+                            model_path["punc-revision"];
+          down_punc_path = s_punc_path;
+        } else {
+          // modelscope
+          LOG(INFO) << "Download model: " << s_punc_path
+                    << " from modelscope: ";
+          python_cmd_punc = python_cmd + " --type onnx " + "--quantize " +
+                            s_punc_quant + " --model-name " + s_punc_path +
+                            " --export-dir " + s_download_model_dir +
+                            " --model_revision " + model_path["punc-revision"];
+          down_punc_path = s_download_model_dir + "/" + s_punc_path;
+        }
+
+        int ret = system(python_cmd_punc.c_str());
+        if (ret != 0) {
+          LOG(INFO) << "Failed to download model from modelscope. If you set "
+                       "local punc model path, you can ignore the errors.";
+        }
+        down_punc_model = down_punc_path + "/model_quant.onnx";
+        if (s_punc_quant == "false" || s_punc_quant == "False" ||
+            s_punc_quant == "FALSE") {
+          down_punc_model = down_punc_path + "/model.onnx";
+        }
+
+        if (access(down_punc_model.c_str(), F_OK) != 0) {
+          LOG(ERROR) << down_punc_model << " do not exists.";
+          exit(-1);
+        } else {
+          model_path[PUNC_DIR] = down_punc_path;
+          LOG(INFO) << "Set " << PUNC_DIR << " : " << model_path[PUNC_DIR];
+        }
+      } else {
+        LOG(INFO) << "PUNC model is not set, use default.";
+      }
+
+    } catch (std::exception const &e) {
+      LOG(ERROR) << "Error: " << e.what();
     }
 
     std::string s_listen_ip = listen_ip.getValue();
@@ -464,14 +509,14 @@ int main(int argc, char* argv[]) {
 
     int s_model_thread_num = model_thread_num.getValue();
 
-    asio::io_context io_decoder;  // context for decoding
-    asio::io_context io_server;   // context for server
+    asio::io_context io_decoder; // context for decoding
+    asio::io_context io_server;  // context for server
 
     std::vector<std::thread> decoder_threads;
 
     std::string s_certfile = certfile.getValue();
     std::string s_keyfile = keyfile.getValue();
-    
+
     // hotword file
     std::string hotword_path;
     hotword_path = model_path.at(HOTWORD);
@@ -485,43 +530,43 @@ int main(int argc, char* argv[]) {
     }
 
     auto conn_guard = asio::make_work_guard(
-        io_decoder);  // make sure threads can wait in the queue
+        io_decoder); // make sure threads can wait in the queue
     auto server_guard = asio::make_work_guard(
-        io_server);  // make sure threads can wait in the queue
+        io_server); // make sure threads can wait in the queue
     // create threads pool
     for (int32_t i = 0; i < s_decoder_thread_num; ++i) {
       decoder_threads.emplace_back([&io_decoder]() { io_decoder.run(); });
     }
 
-    server server_;  // server for websocket
+    server server_; // server for websocket
     wss_server wss_server_;
-    server* server = nullptr;
-    wss_server* wss_server = nullptr;
+    server *server = nullptr;
+    wss_server *wss_server = nullptr;
     if (is_ssl) {
-      LOG(INFO)<< "SSL is opened!";
-      wss_server_.init_asio(&io_server);  // init asio
+      LOG(INFO) << "SSL is opened!";
+      wss_server_.init_asio(&io_server); // init asio
       wss_server_.set_reuse_addr(
-          true);  // reuse address as we create multiple threads
+          true); // reuse address as we create multiple threads
 
       // list on port for accept
       wss_server_.listen(asio::ip::address::from_string(s_listen_ip), s_port);
       wss_server = &wss_server_;
     } else {
-      LOG(INFO)<< "SSL is closed!";
-      server_.init_asio(&io_server);  // init asio
+      LOG(INFO) << "SSL is closed!";
+      server_.init_asio(&io_server); // init asio
       server_.set_reuse_addr(
-          true);  // reuse address as we create multiple threads
+          true); // reuse address as we create multiple threads
 
       // list on port for accept
       server_.listen(asio::ip::address::from_string(s_listen_ip), s_port);
       server = &server_;
     }
 
-
-    WebSocketServer websocket_srv(
-        io_decoder, is_ssl, server, wss_server, s_certfile,
-        s_keyfile);  // websocket server for asr engine
-    websocket_srv.initAsr(model_path, s_model_thread_num, use_gpu_, batch_size_);  // init asr model
+    WebSocketServer websocket_srv(io_decoder, is_ssl, server, wss_server,
+                                  s_certfile,
+                                  s_keyfile); // websocket server for asr engine
+    websocket_srv.initAsr(model_path, s_model_thread_num, use_gpu_,
+                          batch_size_); // init asr model
 
     LOG(INFO) << "decoder-thread-num: " << s_decoder_thread_num;
     LOG(INFO) << "io-thread-num: " << s_io_thread_num;
@@ -540,11 +585,11 @@ int main(int argc, char* argv[]) {
     }
 
     // wait for theads
-    for (auto& t : decoder_threads) {
+    for (auto &t : decoder_threads) {
       t.join();
     }
 
-  } catch (std::exception const& e) {
+  } catch (std::exception const &e) {
     LOG(ERROR) << "Error: " << e.what();
   }
 
