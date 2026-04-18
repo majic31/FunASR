@@ -69,6 +69,9 @@ using namespace std;
 #include "paraformer-torch.h"
 #include "sensevoice-small-torch.h"
 #endif
+#ifdef USE_TRT
+#include "sensevoice-small-trt.h"
+#endif
 #include "paraformer-online.h"
 #include "offline-stream.h"
 #include "tpass-stream.h"

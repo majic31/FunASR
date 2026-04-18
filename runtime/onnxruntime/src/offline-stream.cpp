@@ -38,21 +38,38 @@ OfflineStream::OfflineStream(std::map<std::string, std::string>& model_path, int
         string seg_dict_path;
     
         if(use_gpu){
-            #ifdef USE_GPU
-            // Check if the model is SenseVoiceSmall; if so, use the specialized GPU class
+            #if defined(USE_TRT) || defined(USE_GPU)
+            // Check if the model is SenseVoiceSmall
             if (model_path.at(MODEL_DIR).find(MODEL_SVS) != std::string::npos) {
-                asr_handle = make_unique<SenseVoiceTorch>();
                 model_type = MODEL_SVS;
-                LOG(INFO) << "GPU mode: Loading SenseVoiceTorch for SenseVoiceSmall";
+                #ifdef USE_TRT
+                // Prefer TRT engine if model.trt is present
+                std::string trt_path = PathAppend(model_path.at(MODEL_DIR), "model.trt");
+                if (access(trt_path.c_str(), F_OK) == 0) {
+                    asr_handle = make_unique<SenseVoiceTRT>();
+                    LOG(INFO) << "TRT mode: Loading SenseVoiceTRT (model.trt found)";
+                } else {
+                #endif
+                #ifdef USE_GPU
+                    asr_handle = make_unique<SenseVoiceTorch>();
+                    LOG(INFO) << "GPU mode: Loading SenseVoiceTorch (model.trt not found, falling back to TorchScript)";
+                #endif
+                #ifdef USE_TRT
+                }
+                #endif
             } else {
+                #ifdef USE_GPU
                 asr_handle = make_unique<ParaformerTorch>();
+                #endif
             }
-            asr_handle->SetBatchSize(batch_size);
             #else
-            LOG(ERROR) <<"GPU is not supported! CPU will be used! If you want to use GPU, please add -DGPU=ON when cmake";
+            LOG(ERROR) << "GPU is not supported! CPU will be used! If you want to use GPU, please add -DGPU=ON when cmake";
             asr_handle = make_unique<Paraformer>();
             use_gpu = false;
             #endif
+            if (asr_handle) {
+                asr_handle->SetBatchSize(batch_size);
+            }
         }else{
             if (model_path.at(MODEL_DIR).find(MODEL_SVS) != std::string::npos)
             {
@@ -83,11 +100,23 @@ OfflineStream::OfflineStream(std::map<std::string, std::string>& model_path, int
             am_model_path = PathAppend(model_path.at(MODEL_DIR), QUANT_MODEL_NAME);
         }
         if(use_gpu){
-            am_model_path = PathAppend(model_path.at(MODEL_DIR), TORCH_MODEL_NAME);
-            if(model_path.find(BLADEDISC) != model_path.end() && model_path.at(BLADEDISC) == "true"){
-                am_model_path = PathAppend(model_path.at(MODEL_DIR), BLADE_MODEL_NAME);
+            #ifdef USE_TRT
+            // For TRT, SenseVoiceSmall uses model.trt — pass the directory path.
+            // SenseVoiceTRT::InitAsr() resolves model.trt internally.
+            // For Paraformer (non-SVS) we still use torchscript.
+            if (model_type == MODEL_SVS) {
+                am_model_path = model_path.at(MODEL_DIR); // directory; TRT finds model.trt inside
+            } else {
+            #endif
+                am_model_path = PathAppend(model_path.at(MODEL_DIR), TORCH_MODEL_NAME);
+                if(model_path.find(BLADEDISC) != model_path.end() && model_path.at(BLADEDISC) == "true"){
+                    am_model_path = PathAppend(model_path.at(MODEL_DIR), BLADE_MODEL_NAME);
+                }
+            #ifdef USE_TRT
             }
+            #endif
         }
+
 
         am_cmvn_path = PathAppend(model_path.at(MODEL_DIR), AM_CMVN_NAME);
         am_config_path = PathAppend(model_path.at(MODEL_DIR), AM_CONFIG_NAME);

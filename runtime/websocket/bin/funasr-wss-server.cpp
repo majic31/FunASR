@@ -151,7 +151,11 @@ int main(int argc, char *argv[]) {
         "", FST_INC_WTS, "the fst hotwords incremental bias", false, 20,
         "int32_t");
     TCLAP::SwitchArg use_gpu("", INFER_GPU,
-                             "Whether to use GPU, default is false", false);
+                             "Whether to use GPU (LibTorch TorchScript mode)", false);
+    TCLAP::SwitchArg use_trt("", "use-trt",
+                             "Whether to use TensorRT engine (requires model.trt in model dir). "
+                             "When both --use-gpu and --use-trt are set, TRT is preferred for SenseVoiceSmall.",
+                             false);
     TCLAP::ValueArg<std::int32_t> batch_size(
         "", BATCHSIZE, "batch_size for ASR model when using GPU", false, 4,
         "int32_t");
@@ -187,6 +191,7 @@ int main(int argc, char *argv[]) {
     cmd.add(decoder_thread_num);
     cmd.add(model_thread_num);
     cmd.add(use_gpu);
+    cmd.add(use_trt);
     cmd.add(batch_size);
     cmd.parse(argc, argv);
 
@@ -212,7 +217,13 @@ int main(int argc, char *argv[]) {
     lattice_beam_ = lattice_beam.getValue();
     am_scale_ = am_scale.getValue();
     bool use_gpu_ = use_gpu.getValue();
-    int batch_size_ = batch_size.getValue();
+    bool use_trt_ = use_trt.getValue();
+    // If --use-trt is set, force --use-gpu too (TRT needs GPU path in offline-stream)
+    if (use_trt_) {
+        use_gpu_ = true;
+        LOG(INFO) << "TRT mode enabled: use_gpu forced to true";
+    }
+    int  batch_size_ = batch_size.getValue();
 
     // Download model form Modelscope
     try {

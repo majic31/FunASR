@@ -292,74 +292,127 @@ std::string SenseVoiceTorch::CTCSearch(float *in,
     return res;
 }
 
-// Forward: process each sample in batch sequentially to ensure results.size() == batch_in
-// This prevents out-of-bounds access in the caller (funasrruntime.cpp) when batch_in > 1.
+// Forward: TRUE batch inference — pad all samples to max_frames, build [B,T,D] tensors,
+// and call model_->forward() ONCE per batch to fully utilize GPU Tensor Cores.
+// This replaces the previous per-sample serial loop (fake batch=1 each time).
 std::vector<std::string> SenseVoiceTorch::Forward(float** din, int* len,
                                                    bool input_finished,
                                                    std::string svs_lang,
                                                    bool svs_itn,
                                                    int batch_in) {
     std::vector<std::string> results;
-    results.reserve(batch_in); // avoid reallocation in the loop
+    results.reserve(batch_in);
 
     int32_t in_feat_dim = fbank_opts_.mel_opts.num_bins;
     int32_t feature_dim = lfr_m * in_feat_dim;
 
-    // Resolve language/textnorm IDs once for all samples
+    // Resolve language/textnorm IDs once for all samples in the batch
     int64_t svs_lid   = 0;
     if (lid_map.count(svs_lang))
         svs_lid = (int64_t)lid_map.at(svs_lang);
     int64_t svs_itnid = svs_itn ? 14L : 15L;
 
-    for (int index = 0; index < batch_in; ++index) {
-        std::string result;
+    // ── Step 1: Feature extraction for every sample ──────────────────────────
+    // feats_flat[i]: flattened float array of shape [num_frames_i * feature_dim]
+    std::vector<std::vector<float>> feats_flat(batch_in);
+    std::vector<int64_t>            feat_frame_lens(batch_in, 0);
+    int64_t max_frames = 0;
 
-        // 1. Feature extraction
+    for (int i = 0; i < batch_in; ++i) {
         std::vector<std::vector<float>> asr_feats;
-        FbankKaldi(asr_sample_rate, din[index], len[index], asr_feats);
+        FbankKaldi(asr_sample_rate, din[i], len[i], asr_feats);
         if (asr_feats.empty()) {
-            results.push_back(result);
+            // empty audio — leave feats_flat[i] empty, feat_frame_lens[i] = 0
             continue;
         }
         LfrCmvn(asr_feats);
 
-        int64_t num_frames = (int64_t)asr_feats.size();
-        std::vector<float> wav_feats;
-        wav_feats.reserve((size_t)num_frames * feature_dim);
-        for (const auto &f : asr_feats)
-            wav_feats.insert(wav_feats.end(), f.begin(), f.end());
+        int64_t nf = (int64_t)asr_feats.size();
+        feat_frame_lens[i] = nf;
+        if (nf > max_frames) max_frames = nf;
 
-        // 2. Build tensors — all index tensors must be int64 for nn.Embedding
-        // from_blob is already contiguous, skip redundant .contiguous() call
-        torch::Tensor feats = torch::from_blob(
-            wav_feats.data(), {1, num_frames, feature_dim}, torch::kFloat).to(at::kCUDA);
+        feats_flat[i].reserve((size_t)nf * feature_dim);
+        for (const auto &frame : asr_feats)
+            feats_flat[i].insert(feats_flat[i].end(), frame.begin(), frame.end());
+    }
 
-        torch::Tensor feat_lens     = torch::full({1}, num_frames, torch::kInt64).to(at::kCUDA);
-        torch::Tensor lang_tensor   = torch::full({1}, svs_lid,    torch::kInt64).to(at::kCUDA);
-        torch::Tensor textnorm_tens = torch::full({1}, svs_itnid,  torch::kInt64).to(at::kCUDA);
+    // All samples are empty — return empty strings immediately
+    if (max_frames == 0) {
+        results.assign(batch_in, "");
+        return results;
+    }
 
+    // ── Step 2: Pad to max_frames and build a single [B, T, D] tensor ────────
+    // Allocate zero-initialised buffer (zero-padding is the standard approach)
+    std::vector<float> all_feats((size_t)batch_in * max_frames * feature_dim, 0.0f);
+    for (int i = 0; i < batch_in; ++i) {
+        if (feats_flat[i].empty()) continue;
+        // Copy only the valid frames; the rest remain zero-padded
+        std::memcpy(
+            all_feats.data() + (size_t)i * max_frames * feature_dim,
+            feats_flat[i].data(),
+            feats_flat[i].size() * sizeof(float));
+    }
+
+    // feats: [B, max_frames, feature_dim] — kFloat on CPU, then move to CUDA
+    torch::Tensor feats = torch::from_blob(
+        all_feats.data(),
+        {(int64_t)batch_in, max_frames, (int64_t)feature_dim},
+        torch::kFloat).clone().to(at::kCUDA);   // .clone() because from_blob borrows memory
+
+    // feat_lens: [B] int64  (SenseVoice encoder expects int64)
+    torch::Tensor feat_lens = torch::from_blob(
+        feat_frame_lens.data(),
+        {(int64_t)batch_in},
+        torch::kInt64).clone().to(at::kCUDA);
+
+    // lang / textnorm: [B] int64 — same value broadcast to every sample
+    torch::Tensor lang_tensor   = torch::full({(int64_t)batch_in}, svs_lid,   torch::kInt64).to(at::kCUDA);
+    torch::Tensor textnorm_tens = torch::full({(int64_t)batch_in}, svs_itnid, torch::kInt64).to(at::kCUDA);
+
+    // ── Step 3: Single batched GPU forward ───────────────────────────────────
+    torch::Tensor am_scores_cpu;   // [B, T_out, vocab_size]
+    torch::Tensor token_lens_cpu;  // [B]
+    try {
+        torch::NoGradGuard no_grad;
         std::vector<torch::jit::IValue> inputs = {feats, feat_lens, lang_tensor, textnorm_tens};
+        auto raw_out = model_->forward(inputs);
+        auto elems   = raw_out.toTuple()->elements();
 
-        // 3. Forward
-        try {
-            torch::NoGradGuard no_grad;
-            auto raw_out = model_->forward(inputs);
-            auto elems   = raw_out.toTuple()->elements();
+        // outputs[0]: logits  [B, T_out, vocab_size]
+        // outputs[1]: valid output token lengths  [B]
+        am_scores_cpu  = elems[0].toTensor().to(at::kCPU).contiguous();
+        token_lens_cpu = elems[1].toTensor().to(at::kCPU).contiguous();
 
-            // outputs[0]: logits  [1, T, vocab_size]
-            // outputs[1]: valid output lengths  [1]
-            torch::Tensor am_scores  = elems[0].toTensor().to(at::kCPU).contiguous();
-            torch::Tensor token_lens = elems[1].toTensor().to(at::kCPU);
+        LOG(INFO) << "SenseVoiceTorch batch forward: batch_in=" << batch_in
+                  << " max_frames=" << max_frames
+                  << " am_scores=" << am_scores_cpu.sizes();
+    } catch (std::exception const &e) {
+        LOG(ERROR) << "SenseVoiceTorch batch forward error: " << e.what();
+        results.assign(batch_in, "");
+        return results;
+    }
 
-            // am_scores shape: [1, T, vocab_size] — access dims directly, no .vec() allocation
-            std::vector<int64_t> outputShape = {am_scores.size(0), am_scores.size(1), am_scores.size(2)};
-            std::vector<int32_t> valid_len   = {token_lens[0].item<int32_t>()};
+    // ── Step 4: Per-sample CTCSearch on CPU ──────────────────────────────────
+    std::vector<int64_t> outputShape = {
+        am_scores_cpu.size(0),
+        am_scores_cpu.size(1),
+        am_scores_cpu.size(2)};
 
-            result = CTCSearch(am_scores[0].data_ptr<float>(), valid_len, outputShape);
-        } catch (std::exception const &e) {
-            LOG(ERROR) << "SenseVoiceTorch Forward[" << index << "] error: " << e.what();
+    for (int i = 0; i < batch_in; ++i) {
+        std::string result;
+        if (feat_frame_lens[i] == 0) {
+            // empty audio, skip decoding
+            results.push_back(result);
+            continue;
         }
-
+        try {
+            // Slice [T_out, vocab_size] for this sample; data_ptr gives contiguous ptr
+            std::vector<int32_t> valid_len = {token_lens_cpu[i].item<int>()};
+            result = CTCSearch(am_scores_cpu[i].data_ptr<float>(), valid_len, outputShape);
+        } catch (std::exception const &e) {
+            LOG(ERROR) << "SenseVoiceTorch CTCSearch[" << i << "] error: " << e.what();
+        }
         results.push_back(result);
     }
 
