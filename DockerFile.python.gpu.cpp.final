@@ -1,10 +1,11 @@
 # ---------------------------------------------------------------
 # ---------- 下面的必须是基础，非必须则可以删掉，跟原镜像保持一致
-# ---------- 运行：docker build -f DockerFile.python.gpu.cpp.final  -t funasr_gpu_cpp:v1.2 .
+# ---------- 运行：docker build -f DockerFile.python.gpu.cpp  -t funasr_gpu_cpp:v1.2 .
 # ---------------------------------------------------------------
 
 # ubuntu基础镜像
-FROM funasr_maj:gpu_cpp_1.2
+#FROM funasr_maj:gpu_cpp_1.2
+FROM funasr_maj:gpu_cpp_1.2.1
 
 WORKDIR /workspace/FunASR/runtime
 # 可以在这里面改模型
