@@ -16,6 +16,8 @@ FunASR has open-sourced a large number of pre-trained models on industrial data.
 
 ### Quick Start
 
+No local setup? Run the [Colab quickstart](../../examples/colab/) first, then move to the command line when you are ready.
+
 For command-line invocation:
 ```shell
 funasr ++model=paraformer-zh ++vad_model="fsmn-vad" ++punc_model="ct-punc" ++input=asr_example_zh.wav
@@ -101,6 +103,29 @@ b) During the middle of inference, when encountering long audio segments cut by 
 
 c) Towards the end of inference, if long audio segments cut by VAD have a total token count less than `batch_size_s` and exceed the `threshold` batch_size_threshold_s, forcing the batch size to 1 and still facing OOM, you may reduce `max_single_segment_time` to shorten the VAD audio segment length.
 
+#### Speech Recognition (Fun-ASR-Nano)
+```python
+from funasr import AutoModel
+
+model = AutoModel(
+    model="FunAudioLLM/Fun-ASR-Nano-2512",
+    trust_remote_code=True,
+    remote_code="./model.py",
+    vad_model="fsmn-vad",
+    vad_kwargs={"max_single_segment_time": 30000},
+    device="cuda:0",
+    hub="hf",
+)
+res = model.generate(input="audio.wav", cache={}, batch_size=1, language="中文")
+print(res[0]["text"])
+print(res[0]["timestamps"])  # character-level timestamps
+```
+Notes:
+- Fun-ASR-Nano is trained on tens of millions of hours of data, supporting 31 languages including Chinese dialects.
+- Supports hotwords: `hotwords=["keyword1", "keyword2"]`
+- Supports speaker diarization: add `spk_model="cam++"` and `punc_model="ct-punc"` to get `sentence_info` with speaker labels.
+- Requires: `pip install tiktoken huggingface_hub`
+
 #### Speech Recognition (Streaming)
 ```python
 from funasr import AutoModel
@@ -119,7 +144,7 @@ speech, sample_rate = soundfile.read(wav_file)
 chunk_stride = chunk_size[1] * 960 # 600ms
 
 cache = {}
-total_chunk_num = int(len((speech)-1)/chunk_stride+1)
+total_chunk_num = int((len(speech)-1)/chunk_stride+1)
 for i in range(total_chunk_num):
     speech_chunk = speech[i*chunk_stride:(i+1)*chunk_stride]
     is_final = i == total_chunk_num - 1
@@ -153,7 +178,7 @@ speech, sample_rate = soundfile.read(wav_file)
 chunk_stride = int(chunk_size * sample_rate / 1000)
 
 cache = {}
-total_chunk_num = int(len((speech)-1)/chunk_stride+1)
+total_chunk_num = int((len(speech)-1)/chunk_stride+1)
 for i in range(total_chunk_num):
     speech_chunk = speech[i*chunk_stride:(i+1)*chunk_stride]
     is_final = i == total_chunk_num - 1
@@ -188,6 +213,72 @@ print(res)
 ```
 
 More examples ref to [docs](https://github.com/alibaba-damo-academy/FunASR/tree/main/examples/industrial_data_pretraining)
+
+#### Speaker Verification / Diarization (ERes2NetV2)
+```python
+from funasr import AutoModel
+
+# Standalone speaker embedding extraction
+model = AutoModel(model="iic/speech_eres2netv2_sv_zh-cn_16k-common", device="cuda:0")
+res = model.generate(input="audio.wav")
+embedding = res[0]["spk_embedding"]  # shape: [1, 192]
+```
+
+```python
+from funasr import AutoModel
+
+# ASR with speaker diarization
+model = AutoModel(
+    model="paraformer-zh",
+    vad_model="fsmn-vad",
+    vad_kwargs={"max_single_segment_time": 60000},
+    punc_model="ct-punc",
+    spk_model="iic/speech_eres2netv2_sv_zh-cn_16k-common",
+    device="cuda:0",
+)
+res = model.generate(input="meeting.wav", batch_size_s=300)
+for sentence in res:
+    print(f"[Speaker {sentence['spk']}] {sentence['text']}")
+```
+Notes: `spk_model` can also be `"cam++"` (CAM++ model). ERes2NetV2 provides improved short-duration speaker feature extraction.
+Custom `spk_model` values can be ModelScope model ids or local model paths. The model must load through FunASR `AutoModel` and return `spk_embedding` from its `inference()` method; users still call `AutoModel.generate()`. Downstream speaker clustering uses those embeddings to assign `spk` labels.
+
+#### Multi-language ASR (Qwen3-ASR)
+```python
+from funasr import AutoModel
+
+# Qwen3-ASR supports 52 languages with auto language detection
+# hub="hf" for HuggingFace, default hub="ms" for ModelScope
+model = AutoModel(model="Qwen/Qwen3-ASR-1.7B", hub="hf", device="cuda:0")
+
+# With forced language
+res = model.generate(input="audio_zh.wav", language="Chinese")
+print(res[0]["text"])
+
+# Auto language detection
+res = model.generate(input="audio.wav")
+print(res[0]["text"], res[0].get("language", ""))
+```
+Notes: Use `pip install -U "qwen-asr==0.0.6" "transformers==4.57.6" accelerate`. `qwen-asr==0.0.6` pins `transformers==4.57.6`; newer incompatible Transformers builds may fail with nested `thinker_config` errors. Supports 0.6B and 1.7B model sizes.
+
+#### Multi-language ASR (GLM-ASR)
+```python
+from funasr import AutoModel
+
+# GLM-ASR-Nano supports 17 languages, optimized for dialects and low-volume speech
+# hub="hf" for HuggingFace, default hub="ms" for ModelScope
+model = AutoModel(model="zai-org/GLM-ASR-Nano-2512", hub="hf", device="cuda:0")
+res = model.generate(input="audio.wav")
+print(res[0]["text"])
+
+# ModelScope (Chinese users)
+model = AutoModel(model="ZhipuAI/GLM-ASR-Nano-2512", hub="ms", device="cuda:0")
+```
+Notes: Requires `transformers>=5.0.0` (install from source: `pip install git+https://github.com/huggingface/transformers`).
+
+
+
+
 
 <a name="Training"></a>
 ## Model Training and Testing

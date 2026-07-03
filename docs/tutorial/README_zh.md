@@ -16,6 +16,8 @@ FunASR开源了大量在工业数据上预训练模型，您可以在 [模型许
 
 ### 快速使用
 
+不想先配置本地环境？可以先跑 [Colab 快速体验](../../examples/colab/README_zh.md)，确认模型和输出格式后再切到命令行。
+
 命令行方式调用：
 ```shell
 funasr ++model=paraformer-zh ++vad_model="fsmn-vad" ++punc_model="ct-punc" ++input=asr_example_zh.wav
@@ -116,7 +118,7 @@ speech, sample_rate = soundfile.read(wav_file)
 chunk_stride = chunk_size[1] * 960 # 600ms
 
 cache = {}
-total_chunk_num = int(len((speech)-1)/chunk_stride+1)
+total_chunk_num = int((len(speech)-1)/chunk_stride+1)
 for i in range(total_chunk_num):
     speech_chunk = speech[i*chunk_stride:(i+1)*chunk_stride]
     is_final = i == total_chunk_num - 1
@@ -153,7 +155,7 @@ speech, sample_rate = soundfile.read(wav_file)
 chunk_stride = int(chunk_size * sample_rate / 1000)
 
 cache = {}
-total_chunk_num = int(len((speech)-1)/chunk_stride+1)
+total_chunk_num = int((len(speech)-1)/chunk_stride+1)
 for i in range(total_chunk_num):
     speech_chunk = speech[i*chunk_stride:(i+1)*chunk_stride]
     is_final = i == total_chunk_num - 1
@@ -190,6 +192,70 @@ res = model.generate(input=(wav_file, text_file), data_type=("sound", "text"))
 print(res)
 ```
 更多（[示例](https://github.com/alibaba-damo-academy/FunASR/tree/main/examples/industrial_data_pretraining)）
+
+#### 说话人确认/分割 (ERes2NetV2)
+```python
+from funasr import AutoModel
+
+# 单独提取说话人 embedding
+model = AutoModel(model="iic/speech_eres2netv2_sv_zh-cn_16k-common", device="cuda:0")
+res = model.generate(input="audio.wav")
+embedding = res[0]["spk_embedding"]  # shape: [1, 192]
+```
+
+```python
+from funasr import AutoModel
+
+# ASR + 说话人分割
+model = AutoModel(
+    model="paraformer-zh",
+    vad_model="fsmn-vad",
+    vad_kwargs={"max_single_segment_time": 60000},
+    punc_model="ct-punc",
+    spk_model="iic/speech_eres2netv2_sv_zh-cn_16k-common",
+    device="cuda:0",
+)
+res = model.generate(input="meeting.wav", batch_size_s=300)
+for sentence in res:
+    print(f"[说话人 {sentence['spk']}] {sentence['text']}")
+```
+注：`spk_model` 也可以使用 `"cam++"` (CAM++ 模型)。ERes2NetV2 在短时说话人特征提取方面有所改进。
+自定义 `spk_model` 可以传 ModelScope 模型 ID 或本地模型路径；模型需要能通过 FunASR `AutoModel` 加载，并在自身 `inference()` 方法中返回 `spk_embedding`，用户侧仍调用 `AutoModel.generate()`。后续说话人聚类会使用这些 embedding 分配 `spk` 标签。
+
+#### 多语言语音识别 (Qwen3-ASR)
+```python
+from funasr import AutoModel
+
+# Qwen3-ASR 支持52种语言自动语言检测
+# hub="hf" 从 HuggingFace 下载，默认 hub="ms" 从 ModelScope 下载
+model = AutoModel(model="Qwen/Qwen3-ASR-1.7B", hub="hf", device="cuda:0")
+
+# 指定语言
+res = model.generate(input="audio_zh.wav", language="Chinese")
+print(res[0]["text"])
+
+# 自动语言检测
+res = model.generate(input="audio.wav")
+print(res[0]["text"], res[0].get("language", ""))
+```
+注：请使用 `pip install -U "qwen-asr==0.0.6" "transformers==4.57.6" accelerate`。`qwen-asr==0.0.6` 锁定 `transformers==4.57.6`；若环境中混入不兼容的新版 Transformers，可能触发嵌套 `thinker_config` 报错。支持 0.6B 和 1.7B 两种模型规格。
+
+#### 多语言语音识别 (GLM-ASR)
+```python
+from funasr import AutoModel
+
+# GLM-ASR-Nano 支持17种语言，方言及低音量语音优化
+# hub="hf" 从 HuggingFace 下载，默认 hub="ms" 从 ModelScope 下载
+model = AutoModel(model="zai-org/GLM-ASR-Nano-2512", hub="hf", device="cuda:0")
+res = model.generate(input="audio.wav")
+print(res[0]["text"])
+
+# ModelScope（国内用户）
+model = AutoModel(model="ZhipuAI/GLM-ASR-Nano-2512", hub="ms", device="cuda:0")
+```
+注：需要 `transformers>=5.0.0`（从源码安装：`pip install git+https://github.com/huggingface/transformers`）。
+
+
 
 <a name="核心功能"></a>
 ## 模型训练与测试

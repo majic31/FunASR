@@ -22,9 +22,15 @@ except:
 
 
 @contextmanager
-def maybe_autocast(enabled):
+def maybe_autocast(enabled, dtype=None):
+    """Context manager for mixed precision training.
+    
+    Args:
+        enabled: Whether to enable autocast.
+        dtype: torch.float16 or torch.bfloat16. If None, defaults to float16.
+    """
     if enabled:
-        with autocast():
+        with autocast(dtype=dtype):
             yield
     else:
         yield
@@ -52,6 +58,7 @@ class Trainer:
         use_ddp: bool = False,
         use_fsdp: bool = False,
         use_fp16: bool = False,
+        use_bf16: bool = False,
         output_dir: str = "./",
         **kwargs,
     ):
@@ -84,6 +91,9 @@ class Trainer:
         self.log_interval = kwargs.get("log_interval", 50)
         self.batch_total = 0
         self.use_fp16 = use_fp16
+        self.use_bf16 = use_bf16
+        self.amp_enabled = use_fp16 or use_bf16
+        self.amp_dtype = torch.bfloat16 if use_bf16 else (torch.float16 if use_fp16 else None)
         self.save_checkpoint_interval = kwargs.get("save_checkpoint_interval", 5000)
         self.validate_interval = kwargs.get("validate_interval", -1)
         if self.validate_interval < 0:
@@ -375,14 +385,14 @@ class Trainer:
             time1 = time.perf_counter()
             speed_stats["data_load"] = f"{time1-time_beg:0.3f}"
 
-            batch = to_device(batch, self.device)
+            batch = to_device(batch, self.device, non_blocking=True)
 
             my_context = nullcontext
             if self.use_ddp or self.use_fsdp:
                 my_context = model.no_sync if batch_idx % accum_grad != 0 else my_context
             with my_context():
                 time2 = time.perf_counter()
-                with maybe_autocast(self.use_fp16):
+                with maybe_autocast(self.amp_enabled, dtype=self.amp_dtype):
                     retval = model(**batch)
 
                     # if (
@@ -411,7 +421,7 @@ class Trainer:
 
                 time3 = time.perf_counter()
                 speed_stats["forward_time"] = f"{time3 - time2:0.3f}"
-                if self.use_fp16:
+                if self.use_fp16 and scaler is not None:
                     scaler.scale(loss).backward()
                 else:
                     loss.backward()
@@ -447,7 +457,7 @@ class Trainer:
                 # Execute an optimization step (update model parameters)
                 if self.use_ddp or self.use_fsdp:
                     dist.barrier()
-                if self.use_fp16:
+                if self.use_fp16 and scaler is not None:
                     scaler.step(optim)
                     scaler.update()
                 else:
@@ -456,7 +466,7 @@ class Trainer:
                 # Clear gradients for the next accumulation stage
                 optim.zero_grad(set_to_none=True)
 
-                if self.use_ddp or self.use_fsdp:
+                if (self.use_ddp or self.use_fsdp) and (batch_idx + 1) % self.log_interval == 0:
                     train_loss_avg = torch.tensor(self.train_loss_avg, dtype=torch.float32).to(
                         self.device
                     )
@@ -562,7 +572,7 @@ class Trainer:
                         break
                 time1 = time.perf_counter()
                 speed_stats["data_load"] = f"{time1 - time5:0.3f}"
-                batch = to_device(batch, self.device)
+                batch = to_device(batch, self.device, non_blocking=True)
 
                 time2 = time.perf_counter()
                 retval = model(**batch)
@@ -661,6 +671,24 @@ class Trainer:
         **kwargs,
     ):
 
+        """Log.
+        
+            Args:
+                epoch: TODO.
+                batch_idx: TODO.
+                step_in_epoch: TODO.
+                batch_num_epoch: TODO.
+                lr: TODO.
+                loss: TODO.
+                speed_stats: TODO.
+                stats: TODO.
+                writer: TODO.
+                tag: TODO.
+                data_split_i: TODO.
+                data_split_num: TODO.
+                log_step: TODO.
+                **kwargs: Additional keyword arguments.
+            """
         if (batch_idx + 1) % self.log_interval == 0:
             batch_idx = log_step if log_step is not None else batch_idx
             gpu_info = (
@@ -709,9 +737,9 @@ class Trainer:
                     description_dict[f"stats_rank{self.rank}_{key}/{tag}"] = var.item()
                 for key, var in speed_stats.items():
                     writer.add_scalar(
-                        f"stats_rank{self.rank}_{key}/{tag}", eval(var), self.batch_total
+                        f"stats_rank{self.rank}_{key}/{tag}", float(var), self.batch_total
                     )
-                    description_dict[f"stats_rank{self.rank}_{key}/{tag}"] = eval(var)
+                    description_dict[f"stats_rank{self.rank}_{key}/{tag}"] = float(var)
             if self.use_wandb and wandb is not None:
                 wandb.log(
                     description_dict,
@@ -720,6 +748,11 @@ class Trainer:
 
     def close(self, writer=None):
 
+        """Close.
+        
+            Args:
+                writer: TODO.
+            """
         if self.use_ddp or self.use_fsdp:
             dist.barrier()
 

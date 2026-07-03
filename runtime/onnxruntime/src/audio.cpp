@@ -13,7 +13,7 @@
 #pragma warning(disable:4996)
 #endif
 
-#if defined(__APPLE__)
+#if defined(__APPLE__) || !defined(ENABLE_FFMPEG)
 #include <string.h>
 #else
 
@@ -284,7 +284,8 @@ void Audio::WavResample(int32_t sampling_rate, const float *waveform,
 }
 
 bool Audio::FfmpegLoad(const char *filename, bool copy2char){
-#if defined(__APPLE__)
+#if defined(__APPLE__) || !defined(ENABLE_FFMPEG)
+    LOG(ERROR) << "FFmpeg audio decoding is disabled in this build.";
     return false;
 #else
     // from file
@@ -446,7 +447,8 @@ bool Audio::FfmpegLoad(const char *filename, bool copy2char){
 }
 
 bool Audio::FfmpegLoad(const char* buf, int n_file_len){
-#if defined(__APPLE__)
+#if defined(__APPLE__) || !defined(ENABLE_FFMPEG)
+    LOG(ERROR) << "FFmpeg audio decoding is disabled in this build.";
     return false;
 #else
     // from buf
@@ -1289,6 +1291,10 @@ void Audio::Split(VadModel* vad_obj, int chunk_len, bool input_finished, ASR_TYP
             }
         }
     }else{
+
+        int sample_rate = 16000;  // sample_rate 是音频的采样率 这里固定为16000 Hz
+        float segment_duration =  (static_cast<float>(seg_sample) / sample_rate) * 1000;  // 每个分段的持续时间（毫秒）
+
         for(auto vad_segment: vad_segments){
             int speech_start_i=-1, speech_end_i=-1;
             if(vad_segment[0] != -1){
@@ -1325,6 +1331,12 @@ void Audio::Split(VadModel* vad_obj, int chunk_len, bool input_finished, ASR_TYP
                     frame = nullptr;
                 }
 
+                //设置开始时间和结束时间
+                float start_time = speech_start_i * segment_duration;  // 开始时间（毫秒）
+                float end_time = speech_end_i * segment_duration;      // 结束时间（毫秒）
+                // 转换为 int64_t 类型并赋值给类的成员变量
+                this->start = static_cast<int64_t>(start_time);
+                this->end = static_cast<int64_t>(end_time);
                 speech_start = -1;
                 speech_offline_start = -1;
             // [70, -1]
@@ -1350,6 +1362,8 @@ void Audio::Split(VadModel* vad_obj, int chunk_len, bool input_finished, ASR_TYP
                     }
                 }
 
+                float start_time = speech_start_i * segment_duration;  // 仅有开始时间
+                this->start = static_cast<int64_t>(start_time);
             }else if(speech_end_i != -1){ // [-1,100]
                 if(speech_start == -1 || speech_offline_start == -1){
                     LOG(ERROR) <<"Vad start is null while vad end is available. Set vad start 0" ;
@@ -1399,6 +1413,8 @@ void Audio::Split(VadModel* vad_obj, int chunk_len, bool input_finished, ASR_TYP
                         frame = nullptr;
                     }
                 }
+                float end_time = speech_end_i * segment_duration;      // 仅有结束时间
+                this->end = static_cast<int64_t>(end_time);
                 speech_start = -1;
                 speech_offline_start = -1;
             }
