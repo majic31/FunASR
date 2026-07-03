@@ -29,13 +29,17 @@ from funasr.train_utils.set_all_random_seed import set_all_random_seed
 from funasr.train_utils.load_pretrained_model import load_pretrained_model
 from funasr.utils import export_utils
 from funasr.utils import misc
+
+
 def is_npu_available():
     """检查NPU是否可用。"""
     try:
         import torch_npu
+
         return torch_npu.npu.is_available()
     except ImportError:
         return False
+
 
 def _resolve_ncpu(config, fallback=4):
     """Return a positive integer representing CPU threads from config."""
@@ -45,6 +49,57 @@ def _resolve_ncpu(config, fallback=4):
     except (TypeError, ValueError):
         value = fallback
     return max(value, 1)
+
+
+def _get_import_errors():
+    """Internal: get import errors."""
+    try:
+        import funasr
+    except Exception:
+        return {}
+    get_import_errors = getattr(funasr, "get_import_errors", None)
+    if get_import_errors is not None:
+        return get_import_errors()
+    return dict(getattr(funasr, "_IMPORT_ERRORS", {}))
+
+
+def _format_unregistered_component_error(component_type, component_name, registry):
+    """Internal: format unregistered component error.
+    
+        Args:
+            component_type: TODO.
+            component_name: TODO.
+            registry: TODO.
+        """
+    registered = sorted(registry.keys())
+    preview = ", ".join(registered[:80])
+    if len(registered) > 80:
+        preview += f", ... ({len(registered)} total)"
+    if not preview:
+        preview = "(none)"
+
+    import_errors = _get_import_errors()
+    if import_errors:
+        lines = [
+            f"  - {name}: {error}"
+            for name, error in sorted(import_errors.items())[:50]
+        ]
+        remaining = len(import_errors) - len(lines)
+        if remaining > 0:
+            lines.append(f"  ... {remaining} more import failures hidden")
+        import_error_text = "\n".join(lines)
+    else:
+        import_error_text = "  (none recorded)"
+
+    return (
+        f"{component_type} '{component_name}' is not registered.\n"
+        f"Registered {component_type} keys ({len(registered)}): {preview}\n"
+        "Some modules may have failed to import during auto-registration. "
+        "Set FUNASR_IMPORT_DEBUG=1 to print failures during import, or "
+        "FUNASR_STRICT_IMPORT=1 to fail fast.\n"
+        f"Recorded import failures:\n{import_error_text}"
+    )
+
 
 try:
     from funasr.models.campplus.utils import sv_chunk, postprocess, distribute_spk
@@ -127,7 +182,31 @@ def prepare_data_iterator(data_in, input_len=None, data_type=None, key=None):
 class AutoModel:
 
     def __init__(self, **kwargs):
+        """Initialize AutoModel with ASR model and optional sub-models.
 
+        Args:
+            model (str): Model name (hub alias or full ID) or local path.
+            device (str): Device for inference. "cuda:0", "cpu", "mps", "npu:0".
+                Falls back to CPU if specified device is unavailable.
+            vad_model (str, optional): VAD model for long audio segmentation.
+                Enables processing of any-length audio.
+            vad_kwargs (dict, optional): VAD config, e.g. {"max_single_segment_time": 60000}.
+            punc_model (str, optional): Punctuation restoration model.
+                Not needed for Fun-ASR-Nano/SenseVoice/Qwen3-ASR (they output punctuation natively).
+            spk_model (str, optional): Speaker model for diarization ("cam++" or full model ID).
+                Requires vad_model. For Qwen3-ASR, also requires forced_aligner.
+            spk_mode (str, optional): Speaker diarization mode. "punc_segment" (default) or "vad_segment".
+            hub (str): Model hub. "ms" (ModelScope, default) or "hf" (HuggingFace).
+            ncpu (int): CPU threads (default: 4).
+            disable_update (bool): Skip version check on startup.
+            disable_pbar (bool): Disable tqdm progress bars.
+            **kwargs: Additional model-specific parameters (passed to config.yaml overrides).
+
+        Examples:
+            >>> model = AutoModel(model="paraformer-zh", vad_model="fsmn-vad", punc_model="ct-punc")
+            >>> model = AutoModel(model="FunAudioLLM/Fun-ASR-Nano-2512", trust_remote_code=True,
+            ...                   remote_code="./model.py", vad_model="fsmn-vad", spk_model="cam++", hub="hf")
+        """
         try:
             from funasr.utils.version_checker import check_for_update
 
@@ -149,6 +228,8 @@ class AutoModel:
             vad_kwargs["model_revision"] = kwargs.get("vad_model_revision", "master")
             vad_kwargs["device"] = kwargs["device"]
             vad_kwargs.setdefault("ncpu", kwargs.get("ncpu", 4))
+            if "hub" in kwargs:
+                vad_kwargs.setdefault("hub", kwargs["hub"])
             vad_model, vad_kwargs = self.build_model(**vad_kwargs)
 
         # if punc_model is not None, build punc model else None
@@ -160,6 +241,8 @@ class AutoModel:
             punc_kwargs["model_revision"] = kwargs.get("punc_model_revision", "master")
             punc_kwargs["device"] = kwargs["device"]
             punc_kwargs.setdefault("ncpu", kwargs.get("ncpu", 4))
+            if "hub" in kwargs:
+                punc_kwargs.setdefault("hub", kwargs["hub"])
             punc_model, punc_kwargs = self.build_model(**punc_kwargs)
 
         # if spk_model is not None, build spk model else None
@@ -174,6 +257,8 @@ class AutoModel:
             spk_kwargs["model_revision"] = kwargs.get("spk_model_revision", "master")
             spk_kwargs["device"] = kwargs["device"]
             spk_kwargs.setdefault("ncpu", kwargs.get("ncpu", 4))
+            if "hub" in kwargs:
+                spk_kwargs.setdefault("hub", kwargs["hub"])
             spk_model, spk_kwargs = self.build_model(**spk_kwargs)
             self.cb_model = ClusterBackend(**cb_kwargs).to(kwargs["device"])
             spk_mode = kwargs.get("spk_mode", "punc_segment")
@@ -194,6 +279,21 @@ class AutoModel:
 
     @staticmethod
     def build_model(**kwargs):
+        """Download model from hub, build all components, and load pretrained weights.
+
+        This method handles the full model construction pipeline:
+        1. Download model files from ModelScope/HuggingFace (if not local)
+        2. Parse config.yaml to determine model class, tokenizer, frontend
+        3. Instantiate tokenizer, frontend, and model via the registry
+        4. Load pretrained weights from model.pt
+
+        Args:
+            **kwargs: Must include 'model' (str). All other config.yaml fields can be overridden.
+
+        Returns:
+            tuple: (model, kwargs) where model is the instantiated nn.Module and
+                kwargs contains the resolved configuration.
+        """
         assert "model" in kwargs
         if "model_conf" not in kwargs:
             logging.info("download models from model hub: {}".format(kwargs.get("hub", "ms")))
@@ -202,11 +302,13 @@ class AutoModel:
         set_all_random_seed(kwargs.get("seed", 0))
 
         device = kwargs.get("device", "cuda")
-        if ((device =="cuda" and not torch.cuda.is_available())
-            or (device == "xpu" and not torch.xpu.is_available())
-            or (device == "mps" and not torch.backends.mps.is_available())
-            or (device == "npu" and not is_npu_available())
-            or kwargs.get("ngpu", 1) == 0):
+        if (
+            (device.startswith("cuda") and not torch.cuda.is_available())
+            or (device.startswith("xpu") and not torch.xpu.is_available())
+            or (device.startswith("mps") and not torch.backends.mps.is_available())
+            or (device.startswith("npu") and not is_npu_available())
+            or kwargs.get("ngpu", 1) == 0
+        ):
             device = "cpu"
             kwargs["batch_size"] = 1
         kwargs["device"] = device
@@ -285,7 +387,12 @@ class AutoModel:
         kwargs["frontend"] = frontend
         # build model
         model_class = tables.model_classes.get(kwargs["model"])
-        assert model_class is not None, f'{kwargs["model"]} is not registered'
+        if model_class is None:
+            raise RuntimeError(
+                _format_unregistered_component_error(
+                    "model", kwargs["model"], tables.model_classes
+                )
+            )
         model_conf = {}
         deep_update(model_conf, kwargs.get("model_conf", {}))
         deep_update(model_conf, kwargs)
@@ -313,6 +420,7 @@ class AutoModel:
         elif kwargs.get("bf16", False):
             model.to(torch.bfloat16)
         model.to(device)
+        model.eval()
 
         if not kwargs.get("disable_log", True):
             tables.print()
@@ -320,12 +428,50 @@ class AutoModel:
         return model, kwargs
 
     def __call__(self, *args, **cfg):
+        """Internal: call  .
+        
+            Args:
+                *args: Variable positional arguments.
+                **cfg: Configuration overrides.
+            """
         kwargs = self.kwargs
         deep_update(kwargs, cfg)
         res = self.model(*args, kwargs)
         return res
 
     def generate(self, input, input_len=None, progress_callback=None, **cfg):
+        """Run speech recognition on input audio.
+
+        This is the primary user-facing method. It automatically routes to:
+        - inference() if no vad_model is configured (single utterance)
+        - inference_with_vad() if vad_model is configured (long audio with segmentation)
+
+        Args:
+            input: Audio input. Accepts:
+                - File path (str): "audio.wav", "audio.mp3"
+                - URL (str): "https://..."
+                - numpy array: raw audio samples (float32, 16kHz)
+                - list: batch of file paths or arrays
+                - bytes: raw audio bytes
+            input_len (tensor, optional): Length of each input sample.
+            progress_callback (callable, optional): fn(current, total) called during processing.
+            **cfg: Runtime parameters:
+                - cache (dict): State cache for streaming mode. Pass {} for first call.
+                - hotword (str/list): Keywords to boost recognition accuracy.
+                - language (str): Language hint ("auto", "zh", "en", "Chinese", etc.)
+                - batch_size_s (int): Dynamic batch total duration in seconds.
+                - is_final (bool): Last chunk flag for streaming mode.
+                - return_spk_res (bool): Return speaker diarization results.
+                - sentence_timestamp (bool): Return sentence-level timestamps.
+                - use_itn (bool): Apply inverse text normalization (SenseVoice).
+
+        Returns:
+            list[dict]: Results for each input sample. Common fields:
+                - "key" (str): Sample identifier
+                - "text" (str): Recognized text
+                - "timestamp" (list): [[start_ms, end_ms], ...] per character/word
+                - "sentence_info" (list): [{text, start, end, spk, timestamp}, ...] when spk enabled
+        """
         self._reset_runtime_configs()
         if self.vad_model is None:
             results = self.inference(
@@ -357,6 +503,23 @@ class AutoModel:
         progress_callback=None,
         **cfg,
     ):
+        """Run model inference on input data (internal method).
+
+        Handles batching, timing, and progress reporting. Called by generate()
+        and inference_with_vad(). Typically not called directly by users.
+
+        Args:
+            input: Audio data, file path, or text (for punc model).
+            input_len (tensor, optional): Input lengths for batch.
+            model (nn.Module, optional): Override model (used for VAD/PUNC/SPK sub-models).
+            kwargs (dict, optional): Override kwargs (used for sub-model configs).
+            key (list, optional): Sample identifiers.
+            progress_callback (callable, optional): Progress reporting function.
+            **cfg: Additional config merged into kwargs.
+
+        Returns:
+            list[dict]: Model inference results.
+        """
         if kwargs is None:
             self._reset_runtime_configs()
         kwargs = self.kwargs if kwargs is None else kwargs
@@ -364,7 +527,6 @@ class AutoModel:
             kwargs.pop("cache")
         deep_update(kwargs, cfg)
         model = self.model if model is None else model
-        model.eval()
 
         batch_size = kwargs.get("batch_size", 1)
         # if kwargs.get("device", "cpu") == "cpu":
@@ -434,7 +596,27 @@ class AutoModel:
         return asr_result_list
 
     def inference_with_vad(self, input, input_len=None, **cfg):
+        """Run ASR with VAD segmentation, punctuation, and optional speaker diarization.
+
+        Pipeline:
+        1. VAD: Segment audio into speech regions
+        2. ASR: Recognize each segment (sorted by length for efficient batching)
+        3. Timestamp merge: Combine per-segment timestamps with VAD offsets
+        4. Punctuation: Add punctuation to combined text (if punc_model configured)
+        5. Speaker diarization: Cluster speaker embeddings and assign labels (if spk_model configured)
+
+        Args:
+            input: Audio file path, URL, or numpy array.
+            input_len: Not used (kept for interface consistency).
+            **cfg: Runtime parameters (same as generate()).
+
+        Returns:
+            list[dict]: Results with fields: key, text, timestamp, sentence_info, raw_text.
+        """
         self._reset_runtime_configs()
+        if self.spk_model is not None and "output_timestamp" not in cfg:
+            cfg["output_timestamp"] = True
+            cfg["return_time_stamps"] = True
         kwargs = self.kwargs
         # step.1: compute the vad model
         deep_update(self.vad_kwargs, cfg)
@@ -539,7 +721,8 @@ class AutoModel:
                         spk_res = self.inference(
                             speech_b, input_len=None, model=self.spk_model, kwargs=kwargs, **cfg
                         )
-                        results[_b]["spk_embedding"] = spk_res[0]["spk_embedding"]
+                        spk_embs = torch.cat([r["spk_embedding"] for r in spk_res], dim=0)
+                        results[_b]["spk_embedding"] = spk_embs
                 beg_idx = end_idx
                 end_idx += 1
                 max_len_in_batch = sample_length
@@ -573,8 +756,12 @@ class AutoModel:
                             result[k] = []
                         for t in restored_data[j][k]:
                             if isinstance(t, dict):
-                                t["start_time"] = (float(t["start_time"]) * 1000 + int(vadsegments[j][0])) / 1000
-                                t["end_time"] = (float(t["end_time"]) * 1000 + int(vadsegments[j][0])) / 1000
+                                t["start_time"] = (
+                                    float(t["start_time"]) * 1000 + int(vadsegments[j][0])
+                                ) / 1000
+                                t["end_time"] = (
+                                    float(t["end_time"]) * 1000 + int(vadsegments[j][0])
+                                ) / 1000
                             else:
                                 t[0] = int(t[0]) + int(vadsegments[j][0])
                                 t[1] = int(t[1]) + int(vadsegments[j][0])
@@ -595,12 +782,20 @@ class AutoModel:
                         else:
                             result[k] += restored_data[j][k]
 
+            # Convert dict-format timestamps (Fun-ASR-Nano) to list-format for downstream compatibility
+            if "timestamps" in result and "timestamp" not in result:
+                result["timestamp"] = [
+                    [int(t["start_time"] * 1000), int(t["end_time"] * 1000)]
+                    for t in result["timestamps"]
+                ]
+
             if not len(result["text"].strip()):
                 continue
             return_raw_text = kwargs.get("return_raw_text", False)
             # step.3 compute punc model
             raw_text = None
-            if self.punc_model is not None:
+            punc_res = None
+            if self.punc_model is not None and "timestamps" not in result:
                 deep_update(self.punc_kwargs, cfg)
                 punc_res = self.inference(
                     result["text"], model=self.punc_model, kwargs=self.punc_kwargs, **cfg
@@ -612,7 +807,10 @@ class AutoModel:
 
             # speaker embedding cluster after resorted
             if self.spk_model is not None and kwargs.get("return_spk_res", True):
-                if raw_text is None:
+                if raw_text is None and self.spk_mode == "punc_segment":
+                    logging.warning("punc_model is missing, falling back to vad_segment mode for speaker diarization.")
+                    self.spk_mode = "vad_segment"
+                elif raw_text is None:
                     logging.error("Missing punc_model, which is required by spk_model.")
                 all_segments = sorted(all_segments, key=lambda x: x[0])
                 spk_embedding = result["spk_embedding"]
@@ -620,22 +818,40 @@ class AutoModel:
                     spk_embedding.cpu(), oracle_num=kwargs.get("preset_spk_num", None)
                 )
                 # del result['spk_embedding']
-                sv_output = postprocess(all_segments, None, labels, spk_embedding.cpu())
+                # postprocess expects np.ndarray embeddings (per its type hint).
+                spk_embedding_np = spk_embedding.detach().cpu().numpy()
+                if kwargs.get("return_spk_center", False):
+                    sv_output, spk_center = postprocess(
+                        all_segments, None, labels, spk_embedding_np, return_spk_center=True
+                    )
+                    # Per-speaker ERes2NetV2 centroids, indexed by the `spk` id in
+                    # sentence_info. Kept on the result for downstream voiceprint use
+                    # (the per-chunk spk_embedding below is still deleted to keep output small).
+                    result["spk_embedding_center"] = spk_center
+                else:
+                    sv_output = postprocess(all_segments, None, labels, spk_embedding_np)
+                if self.spk_mode == "punc_segment" and "timestamp" not in result and "timestamps" not in result:
+                    logging.warning("No timestamps in ASR result (e.g. SenseVoice), falling back to vad_segment mode for speaker diarization.")
+                    self.spk_mode = "vad_segment"
                 if self.spk_mode == "vad_segment":  # recover sentence_list
                     sentence_list = []
                     for rest, vadsegment in zip(restored_data, vadsegments):
-                        if "timestamp" not in rest:
-                            logging.error(
-                                "Only 'iic/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-pytorch' \
-                                           and 'iic/speech_seaco_paraformer_large_asr_nat-zh-cn-16k-common-vocab8404-pytorch'\
-                                           can predict timestamp, and speaker diarization relies on timestamps."
-                            )
+                        if "timestamp" in rest:
+                            ts = rest["timestamp"]
+                        elif "timestamps" in rest:
+                            ts = [
+                                [int(t["start_time"] * 1000), int(t["end_time"] * 1000)]
+                                for t in rest["timestamps"]
+                            ]
+                        else:
+                            logging.error("No timestamp found in ASR result. Speaker diarization relies on timestamps.")
+                            ts = []
                         sentence_list.append(
                             {
                                 "start": vadsegment[0],
                                 "end": vadsegment[1],
                                 "sentence": rest["text"],
-                                "timestamp": rest["timestamp"],
+                                "timestamp": ts,
                             }
                         )
                 elif self.spk_mode == "punc_segment":
@@ -645,7 +861,12 @@ class AutoModel:
                                        and 'iic/speech_seaco_paraformer_large_asr_nat-zh-cn-16k-common-vocab8404-pytorch'\
                                        can predict timestamp, and speaker diarization relies on timestamps."
                         )
-                    if kwargs.get("en_post_proc", False):
+                    if punc_res is None:
+                        logging.error(
+                            "Missing punc_model, which is required for punc_segment speaker diarization."
+                        )
+                        sentence_list = []
+                    elif kwargs.get("en_post_proc", False):
                         sentence_list = timestamp_sentence_en(
                             punc_res[0]["punc_array"],
                             result["timestamp"],
@@ -663,6 +884,11 @@ class AutoModel:
                 result["sentence_info"] = sentence_list
             elif kwargs.get("sentence_timestamp", False):
                 if not len(result["text"].strip()):
+                    sentence_list = []
+                elif punc_res is None:
+                    logging.warning(
+                        "punc_model is required for sentence_timestamp, skipping sentence segmentation."
+                    )
                     sentence_list = []
                 else:
                     if kwargs.get("en_post_proc", False):
@@ -703,6 +929,21 @@ class AutoModel:
         return results_ret_list
 
     def export(self, input=None, **cfg):
+        """Export model to ONNX format.
+
+        Creates a deep copy of the model to isolate ONNX operator monkey-patching,
+        then runs torch.onnx.export. The original model remains usable after export.
+
+        Args:
+            input: Sample input for tracing (auto-generated if None).
+            **cfg: Export parameters:
+                - type (str): Export format, "onnx" (default).
+                - quantize (bool): Whether to quantize the model.
+                - device (str): Device for export.
+
+        Returns:
+            str: Path to the exported model directory.
+        """
         """
 
         :param input:
@@ -716,11 +957,23 @@ class AutoModel:
         """
 
         device = cfg.get("device", "cpu")
-        model = self.model.to(device=device)
-        kwargs = self.kwargs
+        
+        # 对模型进行深拷贝，隔离 ONNX 算子替换（Monkey-patching）对原模型的破坏
+        # Implement deep copy of the model to isolate ONNX operator monkey-patching 
+        # and prevent corruption of the original model
+        model = copy.deepcopy(self.model).to(device=device)
+        
+        # 对配置参数进行深拷贝，隔离 deep_update 和 del 的引用污染
+        # Implement deep copy of configuration parameters to isolate reference pollution caused by deep_update and del.
+        kwargs = copy.deepcopy(self.kwargs)
+        
         deep_update(kwargs, cfg)
         kwargs["device"] = device
-        del kwargs["model"]
+        
+        # Safely delete keys that may cause issues during export
+        if "model" in kwargs:
+            del kwargs["model"]
+            
         model.eval()
 
         type = kwargs.get("type", "onnx")
@@ -730,6 +983,9 @@ class AutoModel:
         )
 
         with torch.no_grad():
+            # 这里的导出操作只会魔改 model 副本，原实例的 self.model 依然是纯洁的 PyTorch 图
+            # This export operation only mutates the model copy; 
+            # the original self.model instance remains an intact PyTorch graph.
             export_dir = export_utils.export(model=model, data_in=data_list, **kwargs)
 
         return export_dir
@@ -747,6 +1003,10 @@ class AutoModel:
         baseline["kwargs"] = copy.deepcopy(self.kwargs)
         self._base_kwargs_map = baseline
 
+    _IMMUTABLE_KWARGS_KEYS = frozenset([
+        "token_list", "tokenizer", "frontend", "model", "init_param", "model_path",
+    ])
+
     def _reset_runtime_configs(self):
         """Ensure runtime kwargs reset to baseline defaults before inference."""
         base_map = getattr(self, "_base_kwargs_map", None)
@@ -754,7 +1014,12 @@ class AutoModel:
             return
 
         for name, base in base_map.items():
-            restored = copy.deepcopy(base)
+            restored = {}
+            for k, v in base.items():
+                if k in self._IMMUTABLE_KWARGS_KEYS or not isinstance(v, (dict, list)):
+                    restored[k] = v
+                else:
+                    restored[k] = copy.deepcopy(v)
             setattr(self, name, restored)
 
         ncpu = _resolve_ncpu(self.kwargs, 4)

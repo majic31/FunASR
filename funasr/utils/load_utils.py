@@ -25,6 +25,7 @@ except:
 
 
 def is_ffmpeg_installed():
+    """Is ffmpeg installed."""
     try:
         output = subprocess.check_output(["ffmpeg", "-version"], stderr=subprocess.STDOUT)
         return "ffmpeg version" in output.decode("utf-8")
@@ -52,6 +53,17 @@ def load_audio_text_image_video(
     tokenizer=None,
     **kwargs,
 ):
+    """Load audio/text/image/video data from various input formats.
+
+    Args:
+        data_or_path_or_list: File path, URL, numpy array, torch Tensor, bytes, or list.
+        fs (int): Target sample rate (default 16000).
+        audio_fs (int): Source audio sample rate.
+        data_type (str): Input type ("sound", "text", "fbank").
+
+    Returns:
+        torch.Tensor or list: Loaded and resampled audio tensor(s).
+    """
     if isinstance(data_or_path_or_list, (list, tuple)):
         if data_type is not None and isinstance(data_type, (list, tuple)):
             data_types = [data_type] * len(data_or_path_or_list)
@@ -85,6 +97,19 @@ def load_audio_text_image_video(
     ):  # download url to local file
         data_or_path_or_list = download_from_url(data_or_path_or_list)
 
+    # Fail fast with a clear error if an audio file path does not exist, instead of
+    # silently passing the string downstream (which later crashes with a cryptic
+    # "expected Tensor ... but got str" deep inside the model).
+    if (
+        isinstance(data_or_path_or_list, str)
+        and data_type in (None, "sound")
+        and not data_or_path_or_list.startswith(("http://", "https://"))
+        and not os.path.exists(data_or_path_or_list)
+    ):
+        raise FileNotFoundError(
+            f"Audio file not found: {data_or_path_or_list!r}. Pass a valid local file "
+            f"path, URL, numpy array, torch.Tensor, or bytes."
+        )
     if (isinstance(data_or_path_or_list, str) and os.path.exists(data_or_path_or_list)) or hasattr(data_or_path_or_list, 'read'):  # local file or bytes io
         if data_type is None or data_type == "sound":
             if hasattr(data_or_path_or_list, "read") and hasattr(data_or_path_or_list, "seek"):
@@ -101,10 +126,17 @@ def load_audio_text_image_video(
                 if kwargs.get("reduce_channels", True):
                     data_or_path_or_list = data_or_path_or_list.mean(0)
             except:
-                data_or_path_or_list = _load_audio_ffmpeg(data_or_path_or_list, sr=fs)
-                data_or_path_or_list = torch.from_numpy(
-                    data_or_path_or_list
-                ).squeeze()  # [n_samples,]
+                try:
+                    import soundfile as sf
+                    data_np, audio_fs = sf.read(data_or_path_or_list, dtype="float32")
+                    data_or_path_or_list = torch.from_numpy(data_np).squeeze()
+                    if data_or_path_or_list.ndim > 1 and kwargs.get("reduce_channels", True):
+                        data_or_path_or_list = data_or_path_or_list.mean(-1)
+                except:
+                    data_or_path_or_list = _load_audio_ffmpeg(data_or_path_or_list, sr=fs)
+                    data_or_path_or_list = torch.from_numpy(
+                        data_or_path_or_list
+                    ).squeeze()  # [n_samples,]
         elif data_type == "text" and tokenizer is not None:
             with open(data_or_path_or_list, "r") as f:
                 data_or_path_or_list = tokenizer.encode(f.read().strip())
@@ -173,6 +205,14 @@ def _is_audio_container(data: bytes) -> bool:
 
 
 def load_bytes(input):
+    """Convert audio bytes to numpy array.
+
+    Args:
+        input (bytes): Raw audio bytes.
+
+    Returns:
+        numpy.ndarray: Decoded audio samples.
+    """
     # Only run the (expensive) frame-rate validation when the payload is an
     # actual audio container (WAV, MP3, OGG, …).  Raw PCM buffers have no
     # recognisable header and would cause pydub to spend ~200 ms before
@@ -203,6 +243,12 @@ def validate_frame_rate(
 ):
 
     # 将文件读取为字节流
+    """Validate frame rate.
+    
+        Args:
+            input: Input audio/text data.
+            fs: TODO.
+        """
     byte_data = BytesIO(input)
 
     # 使用 pydub 加载音频
@@ -229,6 +275,17 @@ def validate_frame_rate(
 
 
 def extract_fbank(data, data_len=None, data_type: str = "sound", frontend=None, **kwargs):
+    """Extract filter-bank features from audio data.
+
+    Args:
+        data: Audio samples (list of numpy arrays or tensors).
+        data_len: Lengths of each sample.
+        data_type (str): Input type ("sound", "fbank").
+        frontend: Frontend instance for feature extraction.
+
+    Returns:
+        tuple: (features_tensor, feature_lengths, feature_times)
+    """
     if isinstance(data, np.ndarray):
         data = torch.from_numpy(data)
         if len(data.shape) < 2:

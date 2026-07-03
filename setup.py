@@ -10,38 +10,37 @@ from setuptools import setup
 
 requirements = {
     "install": [
+        # Core
         "scipy>=1.4.1",
         "librosa",
-        "jamo",  # For kss
-        "PyYAML>=5.1.2",
         "soundfile>=0.12.1",
-        "kaldiio>=2.17.0",
-        "torch_complex",
-        # "nltk>=3.4.5",
-        "sentencepiece",  # train
-        "jieba",
-        # "rotary_embedding_torch",
-        # "ffmpeg-python",
-        # "pypinyin>=0.44.0",
-        # "espnet_tts_frontend",
-        # ENH
-        "pytorch_wpe",
-        "editdistance>=0.5.2",
-        # "g2p",
-        # "nara_wpe",
-        # PAI
-        "oss2",
-        # "edit-distance",
-        # "textgrid",
-        # "protobuf",
+        "numpy",
+        "PyYAML>=5.1.2",
         "tqdm",
-        "umap_learn",
-        "jaconv",
-        "hydra-core>=1.3.2",
-        "tensorboardX",
-        # "rotary_embedding_torch",
         "requests",
+        # Model loading
+        "omegaconf>=2.0",
+        "hydra-core>=1.3.2",
         "modelscope",
+        "huggingface_hub",
+        "safetensors",
+        # ASR models
+        "transformers",
+        "tiktoken",
+        "sentencepiece",
+        "kaldiio>=2.17.0",
+        # Multilingual tokenizers
+        "jieba",
+        "jamo",
+        "jaconv",
+        # Speaker & evaluation
+        "umap_learn",
+        "editdistance>=0.5.2",
+        # Optional (training/enhancement)
+        "torch_complex",
+        "tensorboardX",
+        # PAI/Aliyun
+        "oss2",
     ],
     # train: The modules invoked when training only.
     "train": [
@@ -112,10 +111,16 @@ with open(version_file, "r") as f:
 setup(
     name="funasr",
     version=version,
-    url="https://github.com/alibaba-damo-academy/FunASR.git",
+    url="https://github.com/modelscope/FunASR",
     author="Speech Lab of Alibaba Group",
     author_email="funasr@list.alibaba-inc.com",
-    description="FunASR: A Fundamental End-to-End Speech Recognition Toolkit",
+    description="Industrial-grade speech recognition: 170x realtime, 50+ languages, speaker diarization, emotion detection.",
+    keywords=["speech-recognition", "asr", "speaker-diarization", "vad", "pytorch", "whisper-alternative", "multilingual"],
+    project_urls={
+        "Homepage": "https://github.com/modelscope/FunASR",
+        "Documentation": "https://modelscope.github.io/FunASR/",
+        "Bug Tracker": "https://github.com/modelscope/FunASR/issues",
+    },
     long_description=open(os.path.join(dirname, "README.md"), encoding="utf-8").read(),
     long_description_content_type="text/markdown",
     license="The MIT License",
@@ -129,18 +134,27 @@ setup(
     classifiers=[
         "Programming Language :: Python",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
         "Development Status :: 5 - Production/Stable",
         "Intended Audience :: Science/Research",
+        "Intended Audience :: Developers",
         "Operating System :: POSIX :: Linux",
-        "License :: OSI Approved :: Apache Software License",
+        "Operating System :: MacOS",
+        "Operating System :: Microsoft :: Windows",
+        "License :: OSI Approved :: MIT License",
+        "Topic :: Scientific/Engineering :: Artificial Intelligence",
+        "Topic :: Multimedia :: Sound/Audio :: Speech",
         "Topic :: Software Development :: Libraries :: Python Modules",
     ],
     entry_points={
         "console_scripts": [
-            "funasr = funasr.bin.inference:main_hydra",
+            "funasr = funasr.cli:main",
+            "funasr-hydra = funasr.bin.inference:main_hydra",
+            "funasr-server = funasr.bin.server:main",
             "funasr-train = funasr.bin.train:main_hydra",
             "funasr-train-ds = funasr.bin.train_ds:main_hydra",
             "funasr-export = funasr.bin.export:main_hydra",
