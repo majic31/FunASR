@@ -25,8 +25,23 @@ docker run --rm -i \
 
 When submitting this server to MCP directories such as Glama, use this folder as
 the Docker build context so the container entrypoint runs `funasr_mcp.py`.
-The `glama.json` file in this directory declares the MCP server command and
+The repository root `glama.json` declares GitHub maintainer ownership for Glama,
+while the `glama.json` file in this directory declares the container command and
 metadata for directory scanners.
+
+### Official MCP Registry checklist
+
+The Dockerfile includes the OCI ownership label expected by the official MCP
+Registry:
+
+```dockerfile
+LABEL io.modelcontextprotocol.server.name="io.github.modelscope/funasr-mcp"
+```
+
+Before publishing, push a public OCI image (for example to GHCR) and create a
+matching `server.json` whose `name` is `io.github.modelscope/funasr-mcp` and
+whose package identifier points at that image tag. The Registry verifies that
+the Docker/OCI label and `server.json` name match.
 
 ### Glama submission checklist
 
@@ -49,6 +64,12 @@ success before adding it to directory PRs:
 
 If the badge endpoint still returns 404, keep the badge out of external
 directory submissions until the Glama listing is live.
+
+### Directory listings
+
+The FunASR MCP server is listed on mcp.so:
+
+- <https://mcp.so/server/mcp-server-funasr/radial-hks>
 
 ### 3. Configure your AI tool
 

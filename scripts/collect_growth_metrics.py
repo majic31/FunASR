@@ -15,6 +15,7 @@ import subprocess
 import sys
 import urllib.error
 import urllib.request
+from pathlib import Path
 from typing import Any, Dict, Optional, Sequence
 
 DEFAULT_REPO = "modelscope/FunASR"
@@ -31,14 +32,18 @@ DEFAULT_TARGET_DATE = "2026-09-30"
 DEFAULT_INTEGRATION_PRS = [
     "huggingface/transformers#46180",
     "sgl-project/sglang-omni#898",
+    "yuekaizhang/Fun-ASR-vllm#21",
     "ray-project/ray#64053",
     "huggingface/optimum-intel#1801",
+    "openvino-agent/optimum-intel#5",
     "huggingface/speech-to-speech#319",
     "livekit/agents#6176",
+    "mahimairaja/voiceai#16",
     "punkpeye/awesome-mcp-servers#7153",
     "run-llama/llama_index#21958",
     "run-llama/llama_index#21996",
     "mem0ai/mem0#5571",
+    "Significant-Gravitas/AutoGPT#13500",
     "tmoroney/auto-subs#629",
     "infiniflow/ragflow#16473",
     "pipecat-ai/pipecat#4844",
@@ -52,7 +57,38 @@ DEFAULT_INTEGRATION_PRS = [
     "Uberi/speech_recognition#903",
     "ai4s-research/awesome-ai-for-science#69",
     "lukasmasuch/best-of-ml-python#455",
+    "tensorchord/Awesome-LLMOps#533",
+    "rafska/awesome-local-llm#118",
     "mahseema/awesome-ai-tools#1689",
+    "mahseema/awesome-ai-tools#1403",
+    "INTERMT/Awesome-PyTorch-Chinese#5",
+    "krzjoa/awesome-python-data-science#99",
+    "zzw922cn/awesome-speech-recognition-speech-synthesis-papers#27",
+    "Osmantic/ODS#1639",
+    "faroit/awesome-python-scientific-audio#85",
+    "joewongjc/type4me#207",
+    "ga642381/speech-trident#31",
+    "EmulationAI/awesome-large-audio-models#19",
+    "ddlBoJack/Awesome-Speech-Language-Model#6",
+    "LqNoob/Neural-Codec-and-Speech-Language-Models#4",
+    "PyTorchKR/oss-landscape#688",
+    "metame-ai/awesome-audio-plaza#10",
+    "vinta/awesome-python#3246",
+    "fighting41love/funNLP#478",
+    "josephmisiti/awesome-machine-learning#1339",
+    "RVC-Boss/GPT-SoVITS#2801",
+    "jobbole/awesome-python-cn#141",
+    "ChristosChristofidis/awesome-deep-learning#317",
+    "Hannibal046/Awesome-LLM#623",
+    "AiHubCN/Awesome-Chinese-LLM#103",
+    "pluja/awesome-privacy#836",
+    "BradyFU/Awesome-Multimodal-Large-Language-Models#280",
+    "mahmoud/awesome-python-applications#227",
+    "bharathgs/Awesome-pytorch-list#164",
+    "owainlewis/awesome-artificial-intelligence#243",
+    "steven2358/awesome-generative-ai#821",
+    "WangRongsheng/awesome-LLM-resources#162",
+    "crownpku/Awesome-Chinese-NLP#32",
 ]
 FAILED_CHECK_CONCLUSIONS = {"action_required", "cancelled", "failure", "startup_failure", "timed_out"}
 AGGREGATE_FAILURE_CHECK_NAMES = {"pr-ci / PR CI status"}
@@ -62,16 +98,53 @@ KNOWN_EXTERNAL_CHECK_FAILURES = {
         "aggregate_check_names": AGGREGATE_FAILURE_CHECK_NAMES,
         "reason": "LightOnOCR shared hub-cache read-only failure; PR CI status is the aggregate failure",
         "action": "wait for maintainer rerun",
+    },
+    "huggingface/optimum-intel#1801": {
+        "failed_check_names": {
+            "build (*seq2seq*, 4.57.6)",
+            "build (*quantization*, 4.57.6)",
+            "build (*quantization*, 4.45.0)",
+            "build (*quantization*, latest)",
+            "build (*export*, 4.57.6)",
+            "build (*export*, 4.45.0)",
+            "build (*modeling*, 4.57.6)",
+            "build (*export*, latest)",
+            "build",
+            "build (*quantization*)",
+            "build (*seq2seq*)",
+        },
+        "reason": "Current c70504e failures are unrelated OpenVINO matrix failures in Pix2Struct, image-text quantization/export, and tiny-random T5; direct cleanup mirror #1856 was closed for maintainer preliminary PR",
+        "action": "wait for maintainer preliminary PR",
     }
 }
 KNOWN_REVIEW_GATES = {
+    "sgl-project/sglang-omni#898": {
+        "action": "wait for contributor conflict resolution",
+        "reason": "Contributor-owned branch is dirty; conflict recipe already posted from the FunASR side",
+    },
     "punkpeye/awesome-mcp-servers#7153": {
         "action": "submit Glama",
         "reason": "Glama listing and score badge required before review",
     },
+    "mem0ai/mem0#5571": {
+        "action": "wait for preview authorization",
+        "reason": "Vercel preview deployment requires Mem0 team authorization",
+    },
+    "Significant-Gravitas/AutoGPT#13500": {
+        "action": "wait for author CLA",
+        "reason": "CLA must be completed by an authorized author; Vercel preview also requires AutoGPT team authorization",
+    },
     "TEN-framework/ten-framework#2191": {
         "action": "wait for maintainer review",
         "reason": "Claude review action requires maintainer permissions for fork PRs",
+    },
+    "mahimairaja/voiceai#16": {
+        "action": "wait for maintainer workflow approval",
+        "reason": "Maintainer approved; link-check fix and local lychee validation posted, but the new fork check suite is action_required with no check-runs",
+    },
+    "activepieces/activepieces#13985": {
+        "action": "wait for author CLA",
+        "reason": "CLA must be completed by an authorized author; do not sign legal agreements",
     }
 }
 KNOWN_ASSISTED_REVIEW_REQUESTS = {
@@ -90,6 +163,9 @@ KNOWN_ASSISTED_REVIEW_REQUESTS = {
     "mudler/LocalAI#10090": {
         "reason": "review evidence already posted; avoid duplicate pings",
     },
+    "getpaseo/paseo#1634": {
+        "reason": "SenseVoice local STT validation already posted; avoid duplicate pings",
+    },
     "ray-project/ray#64053": {
         "reason": "review evidence already posted; avoid duplicate pings",
     },
@@ -99,8 +175,59 @@ KNOWN_ASSISTED_REVIEW_REQUESTS = {
     "lukasmasuch/best-of-ml-python#455": {
         "reason": "review evidence already posted; avoid duplicate pings",
     },
+    "tensorchord/Awesome-LLMOps#533": {
+        "reason": "DCO and link validation already posted; avoid duplicate pings",
+    },
+    "rafska/awesome-local-llm#118": {
+        "reason": "local ASR listing validation already posted; avoid duplicate pings",
+    },
     "mahseema/awesome-ai-tools#1689": {
         "reason": "review evidence already posted; avoid duplicate pings",
+    },
+    "mahseema/awesome-ai-tools#1403": {
+        "reason": "FunASR discovery-list evidence already posted; avoid duplicate pings",
+    },
+    "INTERMT/Awesome-PyTorch-Chinese#5": {
+        "reason": "FunASR discovery-list evidence already posted; avoid duplicate pings",
+    },
+    "krzjoa/awesome-python-data-science#99": {
+        "reason": "FunASR discovery-list evidence already posted; avoid duplicate pings",
+    },
+    "zzw922cn/awesome-speech-recognition-speech-synthesis-papers#27": {
+        "reason": "FunAudioLLM paper-list evidence already posted; avoid duplicate pings",
+    },
+    "Osmantic/ODS#1639": {
+        "reason": "SenseVoice/FunASR backend evidence already posted; avoid duplicate pings",
+    },
+    "faroit/awesome-python-scientific-audio#85": {
+        "reason": "FunASR scientific-audio listing evidence already posted; avoid duplicate pings",
+    },
+    "joewongjc/type4me#207": {
+        "reason": "draft validation status already posted; keep draft until Qwen3-only ASR smoke test",
+    },
+    "ga642381/speech-trident#31": {
+        "reason": "SenseVoice model-list evidence already posted; avoid duplicate pings",
+    },
+    "yuekaizhang/Fun-ASR-vllm#21": {
+        "reason": "Fun-ASR-vLLM dtype compatibility validation already posted; wait for maintainer review",
+    },
+    "openvino-agent/optimum-intel#5": {
+        "reason": "OpenVINO review-structure cleanup reference branch already posted; wait for maintainer guidance",
+    },
+    "EmulationAI/awesome-large-audio-models#19": {
+        "reason": "FunAudioLLM paper-list validation already posted; wait for maintainer review",
+    },
+    "ddlBoJack/Awesome-Speech-Language-Model#6": {
+        "reason": "Fun-ASR-Nano speech-language-model validation already posted; wait for maintainer review",
+    },
+    "LqNoob/Neural-Codec-and-Speech-Language-Models#4": {
+        "reason": "Fun-ASR-Nano and SenseVoice model-list validation already posted; wait for maintainer review",
+    },
+    "PyTorchKR/oss-landscape#688": {
+        "reason": "FunASR OSS landscape entry is clean and README-only; avoid status noise unless maintainers ask",
+    },
+    "metame-ai/awesome-audio-plaza#10": {
+        "reason": "FunASR, SenseVoice, and FunClip ASR-section PR already has prior pings; avoid duplicate comments",
     },
     "ai4s-research/awesome-ai-for-science#69": {
         "reason": "review evidence already posted; avoid duplicate pings",
@@ -123,15 +250,71 @@ KNOWN_ASSISTED_REVIEW_REQUESTS = {
     "speaches-ai/speaches#658": {
         "reason": "lightweight validation evidence posted; no repo checks exposed",
     },
+    "vinta/awesome-python#3246": {
+        "reason": "high-star discovery-list PR already opened with project evidence; avoid duplicate pings",
+    },
+    "fighting41love/funNLP#478": {
+        "reason": "high-star discovery-list PR already opened with project evidence; avoid duplicate pings",
+    },
+    "josephmisiti/awesome-machine-learning#1339": {
+        "reason": "high-star discovery-list PR already opened with project evidence; avoid duplicate pings",
+    },
+    "RVC-Boss/GPT-SoVITS#2801": {
+        "reason": "Fun-ASR-Nano compatibility fix already opened with reproduction context; avoid duplicate pings",
+    },
+    "jobbole/awesome-python-cn#141": {
+        "reason": "high-star discovery-list PR already opened with project evidence; avoid duplicate pings",
+    },
+    "ChristosChristofidis/awesome-deep-learning#317": {
+        "reason": "high-star discovery-list PR already opened with project evidence; avoid duplicate pings",
+    },
+    "Hannibal046/Awesome-LLM#623": {
+        "reason": "high-star discovery-list PR already opened with project evidence; avoid duplicate pings",
+    },
+    "AiHubCN/Awesome-Chinese-LLM#103": {
+        "reason": "high-star discovery-list PR already opened with project evidence; avoid duplicate pings",
+    },
+    "pluja/awesome-privacy#836": {
+        "reason": "high-star discovery-list PR already opened with project evidence; avoid duplicate pings",
+    },
+    "BradyFU/Awesome-Multimodal-Large-Language-Models#280": {
+        "reason": "high-star discovery-list PR already opened with project evidence; avoid duplicate pings",
+    },
+    "mahmoud/awesome-python-applications#227": {
+        "reason": "high-star discovery-list PR already opened with project evidence; avoid duplicate pings",
+    },
+    "bharathgs/Awesome-pytorch-list#164": {
+        "reason": "high-star discovery-list PR already opened with project evidence; avoid duplicate pings",
+    },
+    "owainlewis/awesome-artificial-intelligence#243": {
+        "reason": "high-star discovery-list PR already opened with project evidence; avoid duplicate pings",
+    },
+    "steven2358/awesome-generative-ai#821": {
+        "reason": "high-star discovery-list PR already opened with project evidence; avoid duplicate pings",
+    },
+    "WangRongsheng/awesome-LLM-resources#162": {
+        "reason": "high-star discovery-list PR already opened with project evidence; avoid duplicate pings",
+    },
+    "crownpku/Awesome-Chinese-NLP#32": {
+        "reason": "high-star discovery-list PR already opened with project evidence; avoid duplicate pings",
+    },
 }
 REPORTER_WAITING_LABELS = {"needs feedback"}
 CONTRIBUTOR_WAITING_LABELS = {"good first issue", "help wanted", "ready for PR"}
+MANUAL_HANDOFF_ACTIONS = {
+    "submit Glama",
+    "wait for author CLA",
+    "wait for contributor conflict resolution",
+    "wait for preview authorization",
+}
 PASSIVE_INTEGRATION_ACTIONS = {
     "archive",
     "finish draft",
+    *MANUAL_HANDOFF_ACTIONS,
     "preview auth gate",
     "resolve CLA",
     "wait for checks",
+    "wait for maintainer preliminary PR",
     "wait for maintainer rerun",
     "wait for maintainer review",
 }
@@ -156,6 +339,12 @@ def github_headers() -> Dict[str, str]:
         "User-Agent": "funasr-growth-metrics",
     }
     token = os.environ.get("GITHUB_TOKEN")
+    if not token:
+        token_path = Path.home() / ".config" / "funasr-ops" / "github_token"
+        try:
+            token = token_path.read_text(encoding="utf-8").strip()
+        except OSError:
+            token = None
     if not token:
         try:
             completed = subprocess.run(
@@ -311,6 +500,8 @@ def recommend_integration_action(
     if pull_request.get("draft"):
         return "finish draft"
     mergeable_state = pull_request.get("mergeable_state")
+    if mergeable_state == "dirty" and known_review_gate_action:
+        return known_review_gate_action
     if mergeable_state == "dirty":
         return "resolve conflicts"
 
@@ -324,6 +515,8 @@ def recommend_integration_action(
     failed_urls = " ".join(
         str(check.get("url") or "") for check in checks.get("failed_check_runs") or []
     ).lower()
+    if "cla" in pending_names and known_review_gate_action:
+        return known_review_gate_action
     if "cla" in pending_names:
         return "resolve CLA"
     if known_review_gate_action and (
@@ -332,6 +525,12 @@ def recommend_integration_action(
         return known_review_gate_action
     if "claude-review" in failed_names or "review bot" in failed_names:
         return "review bot gate"
+    if (
+        "vercel" in failed_names
+        and "vercel.com/git/authorize" in failed_urls
+        and known_review_gate_action
+    ):
+        return known_review_gate_action
     if "vercel" in failed_names and "vercel.com/git/authorize" in failed_urls:
         return "preview auth gate"
     if check_state == "failure" and known_external_failure_reason:
@@ -654,6 +853,24 @@ def format_integration_markdown(metrics: Dict[str, Any]) -> str:
             lines.append(
                 f"- [{integration['pr']}]({integration.get('html_url')}): "
                 f"{integration.get('next_action') or 'inspect'}"
+            )
+    manual_handoff_integrations = sorted(
+        (
+            integration
+            for integration in metrics["integrations"]
+            if integration.get("state") == "open"
+            and (integration.get("next_action") or "inspect") in MANUAL_HANDOFF_ACTIONS
+        ),
+        key=lambda integration: int(integration.get("repo_stars") or 0),
+        reverse=True,
+    )
+    if manual_handoff_integrations:
+        lines.extend(["", "## Manual handoff gates", ""])
+        for integration in manual_handoff_integrations:
+            reason = integration.get("known_review_gate_reason") or "manual action required"
+            lines.append(
+                f"- [{integration['pr']}]({integration.get('html_url')}): "
+                f"{integration.get('next_action') or 'inspect'}; {reason}"
             )
     review_gate_integrations = [
         integration for integration in metrics["integrations"] if integration.get("known_review_gate_reason")

@@ -4,7 +4,7 @@
 
 ## Benchmark
 
-**Test set**: 184 files, 11,541 seconds total. Models: Fun-ASR-Nano / GLM-ASR-Nano.
+**Test set**: 184 files, 11,541 seconds total. Models: Fun-ASR-Nano / GLM-ASR-Nano. See [Benchmark RTF and Reproducibility Notes](./benchmark/rtf_reproducibility.md) for the `RTFx` definition, timing scope checklist, and fields required for comparable reports.
 
 | Model | Engine | VAD | RTFx | CER | Notes |
 |-------|--------|-----|------|-----|-------|
@@ -594,6 +594,19 @@ CUDA_VISIBLE_DEVICES=0 python examples/industrial_data_pretraining/fun_asr_nano/
 
 Speaker diarization is disabled by default; add `--enable-spk` only when the `spk` field is required.
 
+For long-lived microphone sessions behind Docker, nginx, or a cloud load
+balancer, keep WebSocket ping/pong enabled and tune the timeout to be longer
+than short network stalls:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python examples/industrial_data_pretraining/fun_asr_nano/serve_realtime_ws.py \
+    --port 10095 --language 中文 \
+    --ws-ping-interval 20 --ws-ping-timeout 60
+```
+
+Set `--ws-ping-interval 0` only when an external gateway already owns
+keepalive/reconnect policy.
+
 ### 6.3 WebSocket Protocol
 
 **Connection**: `ws://host:10095`
@@ -640,6 +653,15 @@ Client              Server
 python client_python.py --server ws://localhost:10095 --mic
 python client_python.py --server ws://localhost:10095 --file audio.wav
 ```
+
+**Realtime benchmark**:
+```bash
+python examples/industrial_data_pretraining/fun_asr_nano/realtime_ws_benchmark.py \
+    audio_16k_mono_pcm16.wav --server ws://localhost:10095 --clients 4 \
+    --output-jsonl realtime_ws_4c.jsonl
+```
+
+For metric definitions and reporting fields, see [Realtime WebSocket Benchmark](./benchmark/realtime_ws_benchmark.md).
 
 **Browser**: Open `client_mic.html`
 
@@ -775,3 +797,23 @@ Streaming: `serve_realtime_ws.RealtimeASRSession`
 
 **Q: Slow first startup?**
 vLLM initialization takes 60–90 s (KV Cache + CUDA Graph warmup). Subsequent inferences are instant.
+
+**Q: vLLM returns repeated punctuation such as `!!!!!!!!` but PyTorch/HF generate is normal. What should I check?**
+This usually means the audio frontend and checkpoint can work, but the vLLM
+prompt-embedding path or decoding parameters differ from the upstream runner.
+Check these items before changing the model:
+
+- Pass prompt embeddings to vLLM as float32:
+  `EmbedsPrompt(prompt_embeds=input_embeds.float())`.
+- Use ASR-style deterministic decoding. The Fun-ASR-Nano vLLM path defaults to
+  `temperature=0.0`, `top_p=1.0`, and `skip_special_tokens=True`. In
+  prompt-embeds mode, keep `repetition_penalty` at the neutral `1.0` unless you
+  are using a token-prompt path; other values are normalized by FunASR's vLLM
+  helpers to avoid vLLM CUDA scatter errors.
+- Verify that `model_dir` and `vllm_model_dir` are the matching Fun-ASR-Nano
+  pair. If clearing `vllm_model_dir` makes the same audio work through HF
+  generate, keep debugging the vLLM path rather than the audio file.
+- Log vLLM `finish_reason`, generated token ids, prompt embedding dtype, and
+  prompt embedding shape for one failing sample. Repeated punctuation with
+  `finish_reason="length"` usually points to decode/prompt mismatch rather than
+  VAD or audio loading.

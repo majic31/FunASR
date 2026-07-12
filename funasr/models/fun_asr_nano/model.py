@@ -22,6 +22,7 @@ except ImportError:
     AutoModelForCausalLM = None
 
 from .ctc import CTC
+from .device_utils import resolve_autocast_device_type
 from .tools.utils import forced_align
 
 dtype_map = {"bf16": torch.bfloat16, "fp16": torch.float16, "fp32": torch.float32}
@@ -279,9 +280,9 @@ class FunASRNano(nn.Module):
             stats["batch_size_real_frames"] = speech_lengths.sum().item()
             stats["padding_frames"] = stats["batch_size_x_frames"] - stats["batch_size_real_frames"]
 
-        device_type = next(self.parameters()).device.type
+        autocast_device_type = resolve_autocast_device_type(next(self.parameters()).device)
         with torch.autocast(
-            device_type=device_type if device_type in ["cuda", "xpu", "mps"] else "cpu",
+            device_type=autocast_device_type,
             enabled=True if self.llm_dtype != "fp32" else False,
             dtype=dtype_map[self.llm_dtype],
         ):
@@ -758,9 +759,9 @@ class FunASRNano(nn.Module):
             padded[i, Tmax - Ti :, :] = e[0].to(dt)  # left padding
             attn[i, Tmax - Ti :] = 1
 
-        device_type = torch.device(kwargs.get("device", "cuda")).type
+        autocast_device_type = resolve_autocast_device_type(kwargs.get("device", "cuda"))
         with torch.autocast(
-            device_type=device_type if device_type in ["cuda", "xpu", "mps"] else "cpu",
+            device_type=autocast_device_type,
             enabled=True if llm_dtype != "fp32" else False,
             dtype=dt,
         ):
@@ -795,6 +796,50 @@ class FunASRNano(nn.Module):
             )
         return results, {}
 
+    @staticmethod
+    def _slice_batch_value(value, index):
+        if value is None:
+            return None
+        if isinstance(value, torch.Tensor) and value.ndim > 0 and value.shape[0] > index:
+            return value[index : index + 1]
+        if isinstance(value, list) and len(value) > index:
+            return [value[index]]
+        if isinstance(value, tuple) and len(value) > index:
+            return (value[index],)
+        return value
+
+    @staticmethod
+    def _merge_inference_meta(target, source):
+        for name, value in source.items():
+            if isinstance(value, (int, float)):
+                target[name] = target.get(name, 0.0) + value
+            elif name not in target:
+                target[name] = value
+
+    def _inference_llm_ctc_sequential(
+        self, data_in, data_lengths, key, tokenizer, frontend, **kwargs
+    ):
+        """Run multi-segment input one segment at a time when CTC timestamps are active."""
+        if key is not None and len(key) > 0 and isinstance(key[0], (list, tuple)):
+            key = list(key[0])
+
+        results = []
+        meta_data = {}
+        for i, data_i in enumerate(data_in):
+            key_i = [key[i]] if key is not None and i < len(key) else None
+            data_lengths_i = self._slice_batch_value(data_lengths, i)
+            results_i, meta_i = self.inference_llm(
+                [data_i],
+                data_lengths=data_lengths_i,
+                key=key_i,
+                tokenizer=tokenizer,
+                frontend=frontend,
+                **kwargs,
+            )
+            results.extend(results_i)
+            self._merge_inference_meta(meta_data, meta_i)
+        return results, meta_data
+
     def inference_llm(
         self,
         data_in,
@@ -817,8 +862,12 @@ class FunASRNano(nn.Module):
         # Only batch when CTC timestamps are not needed; the batched path does not
         # produce ctc_timestamps, so fall back to the single-sample path when a CTC
         # decoder is loaded (preserves timestamp behavior).
-        if len(data_in) > 1 and self.ctc_decoder is None:
-            return self._inference_llm_batch(
+        if len(data_in) > 1:
+            if self.ctc_decoder is None:
+                return self._inference_llm_batch(
+                    data_in, data_lengths, key, tokenizer, frontend, **kwargs
+                )
+            return self._inference_llm_ctc_sequential(
                 data_in, data_lengths, key, tokenizer, frontend, **kwargs
             )
         inputs_embeds, contents, batch, source_ids, meta_data = self.inference_prepare(
@@ -852,9 +901,9 @@ class FunASRNano(nn.Module):
             llm_dtype = "fp16" if kwargs.get("fp16", False) else llm_dtype
             llm_dtype = "bf16" if kwargs.get("bf16", False) else llm_dtype
 
-        device_type = torch.device(kwargs.get("device", "cuda")).type
+        autocast_device_type = resolve_autocast_device_type(kwargs.get("device", "cuda"))
         with torch.autocast(
-            device_type=device_type if device_type in ["cuda", "xpu", "mps"] else "cpu",
+            device_type=autocast_device_type,
             enabled=True if llm_dtype != "fp32" else False,
             dtype=dtype_map[llm_dtype],
         ):
