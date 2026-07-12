@@ -25,6 +25,7 @@ def test_default_integration_prs_include_sglang_omni_fun_asr():
 def test_github_headers_falls_back_to_gh_auth_token(monkeypatch):
     module = load_growth_metrics_module()
     monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.setenv("HOME", "/tmp/funasr-growth-metrics-no-token-home")
 
     def fake_run(args, **kwargs):
         assert args == ["gh", "auth", "token"]
@@ -35,6 +36,24 @@ def test_github_headers_falls_back_to_gh_auth_token(monkeypatch):
     headers = module.github_headers()
 
     assert headers["Authorization"] == "Bearer cli-token"
+
+
+def test_github_headers_reads_funasr_ops_token_file(monkeypatch, tmp_path):
+    module = load_growth_metrics_module()
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    token_path = tmp_path / ".config" / "funasr-ops" / "github_token"
+    token_path.parent.mkdir(parents=True)
+    token_path.write_text("file-token\n")
+
+    def fake_run(args, **kwargs):
+        raise FileNotFoundError("gh")
+
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
+
+    headers = module.github_headers()
+
+    assert headers["Authorization"] == "Bearer file-token"
 
 
 def test_default_integration_prs_include_high_visibility_external_queue():
@@ -55,6 +74,7 @@ def test_default_integration_prs_include_new_growth_lanes():
     module = load_growth_metrics_module()
 
     expected_prs = {
+        "Significant-Gravitas/AutoGPT#13500",
         "huggingface/speech-to-speech#319",
         "run-llama/llama_index#21958",
         "run-llama/llama_index#21996",
@@ -88,6 +108,90 @@ def test_default_integration_prs_include_voice_agent_and_ml_discovery_lanes():
     }
 
     assert expected_prs.issubset(set(module.DEFAULT_INTEGRATION_PRS))
+
+
+def test_default_integration_prs_include_high_star_awesome_discovery_lanes():
+    module = load_growth_metrics_module()
+
+    expected_prs = {
+        "vinta/awesome-python#3246",
+        "fighting41love/funNLP#478",
+        "josephmisiti/awesome-machine-learning#1339",
+        "RVC-Boss/GPT-SoVITS#2801",
+        "jobbole/awesome-python-cn#141",
+        "ChristosChristofidis/awesome-deep-learning#317",
+        "Hannibal046/Awesome-LLM#623",
+        "AiHubCN/Awesome-Chinese-LLM#103",
+        "pluja/awesome-privacy#836",
+        "BradyFU/Awesome-Multimodal-Large-Language-Models#280",
+        "mahmoud/awesome-python-applications#227",
+        "bharathgs/Awesome-pytorch-list#164",
+        "owainlewis/awesome-artificial-intelligence#243",
+        "steven2358/awesome-generative-ai#821",
+        "WangRongsheng/awesome-LLM-resources#162",
+        "crownpku/Awesome-Chinese-NLP#32",
+    }
+
+    assert expected_prs.issubset(set(module.DEFAULT_INTEGRATION_PRS))
+
+
+def test_high_star_awesome_discovery_lanes_wait_for_maintainer_review():
+    module = load_growth_metrics_module()
+
+    expected_prs = {
+        "vinta/awesome-python#3246",
+        "fighting41love/funNLP#478",
+        "josephmisiti/awesome-machine-learning#1339",
+        "RVC-Boss/GPT-SoVITS#2801",
+        "jobbole/awesome-python-cn#141",
+        "ChristosChristofidis/awesome-deep-learning#317",
+        "Hannibal046/Awesome-LLM#623",
+        "AiHubCN/Awesome-Chinese-LLM#103",
+        "pluja/awesome-privacy#836",
+        "BradyFU/Awesome-Multimodal-Large-Language-Models#280",
+        "mahmoud/awesome-python-applications#227",
+        "bharathgs/Awesome-pytorch-list#164",
+        "owainlewis/awesome-artificial-intelligence#243",
+        "steven2358/awesome-generative-ai#821",
+        "WangRongsheng/awesome-LLM-resources#162",
+        "crownpku/Awesome-Chinese-NLP#32",
+    }
+
+    assert expected_prs.issubset(set(module.KNOWN_ASSISTED_REVIEW_REQUESTS))
+
+
+def test_default_integration_prs_include_missing_validated_discovery_lanes():
+    module = load_growth_metrics_module()
+
+    expected_prs = {
+        "mahseema/awesome-ai-tools#1403",
+        "INTERMT/Awesome-PyTorch-Chinese#5",
+        "krzjoa/awesome-python-data-science#99",
+        "zzw922cn/awesome-speech-recognition-speech-synthesis-papers#27",
+        "Osmantic/ODS#1639",
+        "faroit/awesome-python-scientific-audio#85",
+        "joewongjc/type4me#207",
+        "ga642381/speech-trident#31",
+    }
+
+    assert expected_prs.issubset(set(module.DEFAULT_INTEGRATION_PRS))
+
+
+def test_missing_validated_discovery_lanes_wait_for_maintainer_review():
+    module = load_growth_metrics_module()
+
+    expected_prs = {
+        "mahseema/awesome-ai-tools#1403",
+        "INTERMT/Awesome-PyTorch-Chinese#5",
+        "krzjoa/awesome-python-data-science#99",
+        "zzw922cn/awesome-speech-recognition-speech-synthesis-papers#27",
+        "Osmantic/ODS#1639",
+        "faroit/awesome-python-scientific-audio#85",
+        "joewongjc/type4me#207",
+        "ga642381/speech-trident#31",
+    }
+
+    assert expected_prs.issubset(set(module.KNOWN_ASSISTED_REVIEW_REQUESTS))
 
 
 def test_default_integration_prs_include_mcp_discovery_lanes():
@@ -640,7 +744,7 @@ def test_collect_integration_metrics_surfaces_pending_cla_status(monkeypatch):
     metrics = module.collect_integration_metrics(["activepieces/activepieces#13985"])
 
     integration = metrics["integrations"][0]
-    assert integration["next_action"] == "resolve CLA"
+    assert integration["next_action"] == "wait for author CLA"
     assert integration["checks"]["pending_check_runs"] == [
         {
             "name": "license/cla",
@@ -648,6 +752,65 @@ def test_collect_integration_metrics_surfaces_pending_cla_status(monkeypatch):
             "url": "https://cla-assistant.io/activepieces/activepieces?pullRequest=13985",
         }
     ]
+
+
+def test_collect_integration_metrics_classifies_autogpt_process_gate(monkeypatch):
+    module = load_growth_metrics_module()
+
+    def fake_fetch_json(url, headers=None):
+        if url == "https://api.github.com/repos/Significant-Gravitas/AutoGPT/pulls/13500":
+            return {
+                "number": 13500,
+                "title": "Support configurable transcription endpoints",
+                "state": "open",
+                "draft": False,
+                "mergeable": True,
+                "mergeable_state": "blocked",
+                "html_url": "https://github.com/Significant-Gravitas/AutoGPT/pull/13500",
+                "updated_at": "2026-07-07T21:13:23Z",
+                "head": {"sha": "ed9f137", "ref": "codex/openai-compatible-stt"},
+                "base": {"ref": "dev"},
+                "user": {"login": "LauraGPT"},
+            }
+        if url == "https://api.github.com/repos/Significant-Gravitas/AutoGPT/commits/ed9f137/status":
+            return {
+                "state": "failure",
+                "statuses": [
+                    {
+                        "context": "Vercel",
+                        "state": "failure",
+                        "target_url": "https://vercel.com/git/authorize?team=Significant%20Gravitas",
+                    },
+                    {
+                        "context": "license/cla",
+                        "state": "pending",
+                        "target_url": "https://cla-assistant.io/Significant-Gravitas/AutoGPT?pullRequest=13500",
+                    },
+                ],
+            }
+        if url == "https://api.github.com/repos/Significant-Gravitas/AutoGPT/commits/ed9f137/check-runs?per_page=100":
+            return {
+                "total_count": 4,
+                "check_runs": [
+                    {"name": "check API types", "status": "completed", "conclusion": "success"},
+                    {"name": "lint", "status": "completed", "conclusion": "success"},
+                    {"name": "integration_test", "status": "completed", "conclusion": "success"},
+                    {"name": "end-to-end tests", "status": "completed", "conclusion": "success"},
+                ],
+            }
+        raise AssertionError(f"unexpected URL: {url}")
+
+    monkeypatch.setattr(module, "fetch_json", fake_fetch_json)
+
+    metrics = module.collect_integration_metrics(["Significant-Gravitas/AutoGPT#13500"])
+
+    integration = metrics["integrations"][0]
+    assert integration["known_review_gate_reason"] == (
+        "CLA must be completed by an authorized author; Vercel preview also requires AutoGPT team authorization"
+    )
+    assert integration["next_action"] == "wait for author CLA"
+    assert {check["name"] for check in integration["checks"]["failed_check_runs"]} == {"Vercel"}
+    assert {check["name"] for check in integration["checks"]["pending_check_runs"]} == {"license/cla"}
 
 
 def test_collect_integration_metrics_classifies_review_bot_failure(monkeypatch):
@@ -734,7 +897,7 @@ def test_collect_integration_metrics_classifies_vercel_authorization_gate(monkey
     metrics = module.collect_integration_metrics(["mem0ai/mem0#5571"])
 
     integration = metrics["integrations"][0]
-    assert integration["next_action"] == "preview auth gate"
+    assert integration["next_action"] == "wait for preview authorization"
     assert integration["checks"]["failed_check_runs"] == [
         {
             "name": "Vercel",
@@ -850,7 +1013,7 @@ def test_collect_integration_metrics_treats_empty_pending_status_as_review_gate(
     integration = metrics["integrations"][0]
     assert integration["checks"]["state"] == "unknown"
     assert integration["checks"]["pending_check_runs"] == []
-    assert integration["next_action"] == "review gate"
+    assert integration["next_action"] == "wait for contributor conflict resolution"
 
 
 def test_format_integration_markdown_includes_update_age_and_next_action():
@@ -1055,6 +1218,18 @@ def test_format_integration_markdown_lists_active_operator_queue():
                 "next_action": "resolve CLA",
                 "checks": {"state": "pending", "failed_check_runs": [], "pending_check_runs": []},
             },
+            {
+                "pr": "huggingface/optimum-intel#1801",
+                "html_url": "https://github.com/huggingface/optimum-intel/pull/1801",
+                "state": "open",
+                "mergeable_state": "unstable",
+                "repo_stars": 18_000,
+                "repo_forks": 2_800,
+                "updated_at": "2026-06-30T04:20:02Z",
+                "updated_age_days": 0,
+                "next_action": "wait for maintainer preliminary PR",
+                "checks": {"state": "failure", "failed_check_runs": [], "pending_check_runs": []},
+            },
         ],
     }
 
@@ -1068,6 +1243,52 @@ def test_format_integration_markdown_lists_active_operator_queue():
     )
     assert "livekit/agents#6176" not in active_queue
     assert "activepieces/activepieces#13985" not in active_queue
+    assert "wait for maintainer preliminary PR" not in active_queue
+
+
+def test_format_integration_markdown_lists_manual_handoff_gates():
+    module = load_growth_metrics_module()
+    metrics = {
+        "collected_at_utc": "2026-07-02T00:00:00+00:00",
+        "integrations": [
+            {
+                "pr": "punkpeye/awesome-mcp-servers#7153",
+                "html_url": "https://github.com/punkpeye/awesome-mcp-servers/pull/7153",
+                "state": "open",
+                "mergeable_state": "clean",
+                "repo_stars": 90_000,
+                "repo_forks": 12_000,
+                "updated_at": "2026-06-16T04:21:55Z",
+                "updated_age_days": 16,
+                "next_action": "submit Glama",
+                "known_review_gate_reason": "Glama listing and score badge required before review",
+                "checks": {"state": "success", "failed_check_runs": [], "pending_check_runs": []},
+            },
+            {
+                "pr": "huggingface/optimum-intel#1801",
+                "html_url": "https://github.com/huggingface/optimum-intel/pull/1801",
+                "state": "open",
+                "mergeable_state": "unstable",
+                "repo_stars": 600,
+                "repo_forks": 240,
+                "updated_at": "2026-06-30T04:20:02Z",
+                "updated_age_days": 0,
+                "next_action": "review gate",
+                "checks": {"state": "unknown", "failed_check_runs": [], "pending_check_runs": []},
+            },
+        ],
+    }
+
+    output = module.format_integration_markdown(metrics)
+
+    active_queue = output.split("## Active operator queue", 1)[1].split("## Manual handoff gates", 1)[0]
+    manual_gates = output.split("## Manual handoff gates", 1)[1].split("## Manual review gates", 1)[0]
+    assert "punkpeye/awesome-mcp-servers#7153" not in active_queue
+    assert (
+        "- [punkpeye/awesome-mcp-servers#7153](https://github.com/punkpeye/awesome-mcp-servers/pull/7153): "
+        "submit Glama; Glama listing and score badge required before review"
+    ) in manual_gates
+    assert "huggingface/optimum-intel#1801" not in manual_gates
 
 
 def test_format_integration_markdown_lists_known_review_gates():

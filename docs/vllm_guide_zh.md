@@ -4,7 +4,7 @@
 
 ## Benchmark
 
-**测试集**：184 文件，11541 秒，Fun-ASR-Nano / GLM-ASR-Nano。
+**测试集**：184 文件，11541 秒，Fun-ASR-Nano / GLM-ASR-Nano。RTFx 定义、计时口径和可复现字段请见 [Benchmark RTF and Reproducibility Notes](./benchmark/rtf_reproducibility.md)。
 
 | 模型 | 引擎 | VAD | RTFx | CER | 备注 |
 |------|------|-----|------|-----|------|
@@ -598,6 +598,18 @@ CUDA_VISIBLE_DEVICES=0 python examples/industrial_data_pretraining/fun_asr_nano/
 
 说话人分离默认关闭；只有确实需要 `spk` 字段时再加 `--enable-spk`。
 
+如果麦克风长连接经过 Docker、nginx 或云负载均衡，建议保持 WebSocket
+ping/pong 开启，并把 timeout 调到能覆盖短暂网络抖动：
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python examples/industrial_data_pretraining/fun_asr_nano/serve_realtime_ws.py \
+    --port 10095 --language 中文 \
+    --ws-ping-interval 20 --ws-ping-timeout 60
+```
+
+只有在外部网关已经统一负责 keepalive / reconnect 策略时，才考虑设置
+`--ws-ping-interval 0` 关闭服务端 ping。
+
 ### 6.3 WebSocket 协议
 
 **连接**：`ws://host:10095`
@@ -644,6 +656,15 @@ Client              Server
 python client_python.py --server ws://localhost:10095 --mic
 python client_python.py --server ws://localhost:10095 --file audio.wav
 ```
+
+**实时压测**：
+```bash
+python examples/industrial_data_pretraining/fun_asr_nano/realtime_ws_benchmark.py \
+    audio_16k_mono_pcm16.wav --server ws://localhost:10095 --clients 4 \
+    --output-jsonl realtime_ws_4c.jsonl
+```
+
+指标定义和报告字段见 [Realtime WebSocket Benchmark](./benchmark/realtime_ws_benchmark.md)。
 
 **浏览器**：打开 `client_mic.html`
 
@@ -779,3 +800,20 @@ RTFx 102 → 46。CER 不变。默认关闭。
 
 **Q: 首次慢？**
 vLLM 初始化 60-90s，之后即时。
+
+**Q: vLLM 输出连续标点（例如 `!!!!!!!!`），但 PyTorch/HF generate 正常，应该先查什么？**
+这通常说明音频 frontend 和 checkpoint 本身能工作，但 vLLM prompt-embedding
+路径或解码参数和 upstream runner 不一致。改模型前先检查这些项：
+
+- 传给 vLLM 的 prompt embeddings 要显式转成 float32：
+  `EmbedsPrompt(prompt_embeds=input_embeds.float())`。
+- 使用 ASR 更合适的确定性解码。Fun-ASR-Nano vLLM 路径默认使用
+  `temperature=0.0`、`top_p=1.0` 和 `skip_special_tokens=True`。在
+  prompt-embeds 模式下，`repetition_penalty` 保持中性的 `1.0`，除非你走的是
+  token prompt 路径；FunASR 的 vLLM helper 会把其他值归一化，避免 vLLM CUDA scatter
+  错误。
+- 确认 `model_dir` 和 `vllm_model_dir` 是匹配的一组 Fun-ASR-Nano 模型。如果清空
+  `vllm_model_dir` 后同一音频走 HF generate 正常，就继续排查 vLLM 路径，而不是音频文件。
+- 对一个失败样本记录 vLLM `finish_reason`、生成 token ids、prompt embedding dtype
+  和 shape。连续标点且 `finish_reason="length"` 时，通常更像解码/prompt 不匹配，而不是
+  VAD 或音频读取问题。
