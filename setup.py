@@ -34,7 +34,7 @@ requirements = {
         "jamo",
         "jaconv",
         # Speaker & evaluation
-        "umap_learn",
+        "umap_learn==0.5.7",
         "rapidfuzz>=3.0.0",
         # Optional (training/enhancement)
         "torch_complex",
