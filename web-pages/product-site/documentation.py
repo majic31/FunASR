@@ -24,7 +24,13 @@ def source_slug(value: str, separator: str) -> str:
 
 def load_catalogue() -> dict:
     catalogue = json.loads((SITE_ROOT / 'data/documentation.json').read_text())
+    groups = [group['id'] for group in catalogue['groups']]
+    slugs = [entry['slug'] for entry in catalogue['pages']]
+    if len(set(groups)) != len(groups) or len(set(slugs)) != len(slugs):
+        raise ValueError('Duplicate documentation group or slug')
     for entry in catalogue['pages']:
+        if entry['group'] not in groups or not re.fullmatch(r'[a-z0-9]+(?:-[a-z0-9]+)*', entry['slug']):
+            raise ValueError(f'Invalid documentation entry: {entry["slug"]}')
         for language in ('zh', 'en'):
             path = (REPO_ROOT / entry[f'source_{language}']).resolve()
             if not path.is_relative_to(REPO_ROOT) or not path.is_file():
@@ -41,10 +47,10 @@ def render_source(entry: dict, language: str, catalogue: dict) -> dict:
     parser = Markdown(extensions=['extra', 'toc', 'sane_lists'],
                       extension_configs={'toc': {'slugify': source_slug}})
     soup = BeautifulSoup(parser.convert((REPO_ROOT / relative).read_text()), 'html.parser')
-    local_routes = {
-        page[f'source_{language}']: doc_route(page['slug'], language)
-        for page in catalogue['pages']
-    }
+    local_routes = {}
+    for variant in (('en' if language == 'zh' else 'zh'), language):
+        for page in catalogue['pages']:
+            local_routes[page[f'source_{variant}']] = doc_route(page['slug'], variant)
     for element, attr in [('a', 'href'), ('img', 'src')]:
         for node in soup.select(f'{element}[{attr}]'):
             value = str(node[attr])
