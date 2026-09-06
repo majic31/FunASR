@@ -75,19 +75,19 @@ python -m http.server --directory /tmp/funasr-docs 8000
 
 ## Build the Sphinx Reference
 
-For convenience, we provide users with the ability to generate local HTML manually.
-
-First, you should install the following packages, which is required for building HTML:
-
-```sh
-pip3 install -U "funasr[doc]"
-```
-
-Then you can generate HTML manually.
+The legacy Sphinx reference is a separate local build. Use an isolated environment
+with the dependency versions in the `legacy-docs-links` job of
+[product-site.yml](../.github/workflows/product-site.yml); installing only the
+FunASR package does not reproduce that builder. From the repository root:
 
 ```sh
-cd docs
-make html
+python -m pytest tests/test_sphinx_links.py tests/test_reference_docs_contract.py -q
+python -m sphinx -b html -n -E -d /tmp/funasr-sphinx-doctrees docs /tmp/funasr-sphinx-html
 ```
 
-The generated files are all contained in the "FunASR/docs/_build" directory. You can access the FunASR documentation by simply opening the "html/index.html" file in your browser from this directory.
+Open `/tmp/funasr-sphinx-html/index.html` after the build. Markdown heading
+fragments remain usable alongside existing Sphinx anchors, including numbered
+and Chinese headings. Missing destinations still produce warnings; inspect the
+build log rather than treating an exit code alone as proof of correct links.
+The GitHub Pages publishing workflow uses the product documentation exporter
+and generated API reference, not this standalone Sphinx output.

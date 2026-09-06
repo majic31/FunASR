@@ -6,8 +6,10 @@ on:
       - 'README*.md'
       - 'docs/**/*.md'
       - 'docs/conf.py'
+      - 'docs/index.rst'
       - 'docs/_ext/**'
       - 'tests/test_sphinx_links.py'
+      - 'tests/test_vllm_examples_contract.py'
       - 'model_zoo/**/*.md'
       - 'runtime/**/*.md'
       - 'examples/openai_api/**/*.md'
@@ -24,8 +26,10 @@ on:
       - 'README*.md'
       - 'docs/**/*.md'
       - 'docs/conf.py'
+      - 'docs/index.rst'
       - 'docs/_ext/**'
       - 'tests/test_sphinx_links.py'
+      - 'tests/test_vllm_examples_contract.py'
       - 'model_zoo/**/*.md'
       - 'runtime/**/*.md'
       - 'examples/openai_api/**/*.md'
@@ -79,6 +83,8 @@ jobs:
         run: >-
           python -m pytest
           tests/test_learning_docs_contract.py
+          tests/test_reference_docs_contract.py
+          tests/test_vllm_examples_contract.py
           tests/test_training_docs_contract.py
           tests/test_python_api_docs_contract.py
           tests/test_service_docs_contract.py
