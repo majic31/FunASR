@@ -3,6 +3,8 @@ name: Product site
 on:
   pull_request:
     paths:
+      - 'docs/**/*.md'
+      - 'gh-pages-output/**'
       - 'web-pages/product-site/**'
       - 'web-pages/scripts/**'
       - 'web-pages/nginx/**'
@@ -10,6 +12,8 @@ on:
   push:
     branches: [main]
     paths:
+      - 'docs/**/*.md'
+      - 'gh-pages-output/**'
       - 'web-pages/product-site/**'
       - 'web-pages/scripts/**'
       - 'web-pages/nginx/**'

@@ -438,7 +438,7 @@ test('llama.cpp blog heading clears fixed navigation on mobile', async ({ page }
   await page.goto('/blog/funasr-llama-cpp-whisper-cpp-alternative.html');
 
   const layout = await page.evaluate(() => {
-    const navigation = document.querySelector<HTMLElement>('nav.nav');
+    const navigation = document.querySelector<HTMLElement>('.site-header');
     const heading = document.querySelector<HTMLElement>('h1');
     return {
       overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
@@ -463,7 +463,7 @@ test('legacy comparison pages keep accurate claims and fit mobile', async ({ pag
     const audit = await page.evaluate(() => ({
       overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
       text: document.body.innerText,
-      trackedGitHub: document.querySelector('.nav-btn')?.getAttribute('href'),
+      trackedGitHub: document.querySelector('.site-header a[aria-label="GitHub"]')?.getAttribute('href'),
     }));
 
     expect(audit.overflow).toBeLessThanOrEqual(1);
