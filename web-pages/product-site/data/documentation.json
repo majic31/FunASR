@@ -1,0 +1,24 @@
+{
+  "groups": [
+    {"id": "start", "zh": "开始使用", "en": "Get started"},
+    {"id": "models", "zh": "模型与能力", "en": "Models & capabilities"},
+    {"id": "deploy", "zh": "部署与接口", "en": "Deploy & integrate"},
+    {"id": "operate", "zh": "评测与运维", "en": "Evaluate & operate"},
+    {"id": "ecosystem", "zh": "应用与生态", "en": "Applications & ecosystem"}
+  ],
+  "pages": [
+    {"slug": "model-selection", "group": "start", "zh": "选择第一个模型", "en": "Choose your first model", "source_zh": "docs/model_selection_zh.md", "source_en": "docs/model_selection.md"},
+    {"slug": "command-line", "group": "start", "zh": "命令行转写", "en": "Command-line transcription", "source_zh": "docs/cli.md", "source_en": "docs/cli.md"},
+    {"slug": "migration", "group": "start", "zh": "从 Whisper 与云 API 迁移", "en": "Migrate from Whisper & cloud APIs", "source_zh": "docs/migration_from_whisper_zh.md", "source_en": "docs/migration_from_whisper.md"},
+    {"slug": "moss-transcribe-diarize", "group": "models", "zh": "MOSS 转写与说话人分离", "en": "MOSS transcription & diarization", "source_zh": "docs/moss_transcribe_diarize_zh.md", "source_en": "docs/moss_transcribe_diarize.md"},
+    {"slug": "deployment-matrix", "group": "deploy", "zh": "运行时与部署矩阵", "en": "Runtime & deployment matrix", "source_zh": "docs/deployment_matrix_zh.md", "source_en": "docs/deployment_matrix.md"},
+    {"slug": "vllm", "group": "deploy", "zh": "vLLM split-engine 推理", "en": "vLLM split-engine inference", "source_zh": "docs/vllm_guide_zh.md", "source_en": "docs/vllm_guide.md"},
+    {"slug": "native-vllm", "group": "deploy", "zh": "原生 vLLM 验证记录", "en": "Native vLLM validation record", "source_zh": "docs/vllm_native_funasr_validation.md", "source_en": "docs/vllm_native_funasr_validation.md"},
+    {"slug": "troubleshooting", "group": "operate", "zh": "安装与推理故障排查", "en": "Troubleshooting", "source_zh": "docs/troubleshooting_zh.md", "source_en": "docs/troubleshooting.md"},
+    {"slug": "benchmark-method", "group": "operate", "zh": "可复现性能评测", "en": "Reproducible performance tests", "source_zh": "docs/benchmark/rtf_reproducibility.md", "source_en": "docs/benchmark/rtf_reproducibility.md"},
+    {"slug": "realtime-benchmark", "group": "operate", "zh": "实时 WebSocket 压测", "en": "Realtime WebSocket benchmarking", "source_zh": "docs/benchmark/realtime_ws_benchmark.md", "source_en": "docs/benchmark/realtime_ws_benchmark.md"},
+    {"slug": "use-cases", "group": "ecosystem", "zh": "应用场景与示例", "en": "Use cases & examples", "source_zh": "docs/use_case_showcase_zh.md", "source_en": "docs/use_case_showcase.md"},
+    {"slug": "community", "group": "ecosystem", "zh": "社区集成", "en": "Community integrations", "source_zh": "docs/community_projects_zh.md", "source_en": "docs/community_projects.md"},
+    {"slug": "repositories", "group": "ecosystem", "zh": "四仓职责与贡献入口", "en": "Repositories & contribution paths", "source_zh": "docs/repository_roles_zh.md", "source_en": "docs/repository_roles.md"}
+  ]
+}

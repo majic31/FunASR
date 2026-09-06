@@ -93,7 +93,9 @@ def test_vllm_contract_tracks_native_funasr_release_and_h100_validation(valid_re
     )
     limitation = entry['translations']['en']['primary_limitation'].lower()
     assert 'community-converted checkpoint' in limitation
-    assert 'official funasr split-engine' in limitation
+    assert 'official funaudiollm/fun-asr-nano-2512-vllm' in limitation
+    assert 'does not extend the old test evidence' in limitation
+    assert 'https://github.com/vllm-project/vllm/pull/54944' in evidence_urls
 
 
 def test_moss_transcribe_diarize_contract_tracks_third_party_upstream(valid_registry):

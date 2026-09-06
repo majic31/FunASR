@@ -74,13 +74,13 @@ def test_homepage_routes_each_project_by_workload(built_site, relative, markers)
     (
         (
             'index.html',
-            '按工作流进入专用仓库',
-            ('/go/fun-asr', '/go/sensevoice', '/go/funclip'),
+            '为你的应用，选对模型。',
+            ('/go/fun-asr', '/go/sensevoice', '/go/funclip', '/docs/moss-transcribe-diarize.html'),
         ),
         (
             'en/index.html',
-            'Choose the focused repository',
-            ('/go/fun-asr', '/go/sensevoice', '/go/funclip'),
+            'The right model for your application.',
+            ('/go/fun-asr', '/go/sensevoice', '/go/funclip', '/en/docs/moss-transcribe-diarize.html'),
         ),
     ),
 )
@@ -349,8 +349,8 @@ def test_old_llama_routes_point_to_product_pages(built_site):
     ):
         soup = read_soup(built_site / relative)
         assert soup.select_one('link[rel="canonical"]')['href'].endswith(expected)
-        assert soup.select_one('.nav-links a[href$="/deploy/"]') or soup.select_one(
-            '.nav-links a[href$="/en/deploy/"]'
+        assert soup.select_one('[data-primary-nav] a[href$="/deploy/"]') or soup.select_one(
+            '[data-primary-nav] a[href$="/en/deploy/"]'
         )
 
 
