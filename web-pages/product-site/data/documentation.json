@@ -13,7 +13,7 @@
     {"slug": "quickstart", "group": "start", "zh": "第一次转写", "en": "Your first transcription", "source_zh": "docs/tutorial/README_zh.md", "source_en": "docs/tutorial/README.md"},
     {"slug": "python-api", "group": "start", "zh": "Python SDK: AutoModel", "en": "Python SDK: AutoModel", "source_zh": "docs/python_api_zh.md", "source_en": "docs/python_api.md"},
     {"slug": "model-selection", "group": "start", "zh": "选择第一个模型", "en": "Choose your first model", "source_zh": "docs/model_selection_zh.md", "source_en": "docs/model_selection.md"},
-    {"slug": "command-line", "group": "start", "zh": "命令行转写", "en": "Command-line transcription", "source_zh": "docs/cli.md", "source_en": "docs/cli.md"},
+    {"slug": "command-line", "group": "start", "zh": "命令行转写", "en": "Command-line transcription", "source_zh": "docs/cli_zh.md", "source_en": "docs/cli.md"},
     {"slug": "migration", "group": "start", "zh": "从 Whisper 与云 API 迁移", "en": "Migrate from Whisper & cloud APIs", "source_zh": "docs/migration_from_whisper_zh.md", "source_en": "docs/migration_from_whisper.md"},
     {"slug": "moss-transcribe-diarize", "group": "models", "zh": "MOSS 转写与说话人分离", "en": "MOSS transcription & diarization", "source_zh": "docs/moss_transcribe_diarize_zh.md", "source_en": "docs/moss_transcribe_diarize.md"},
     {"slug": "model-zoo", "group": "models", "zh": "Model Zoo", "en": "Model Zoo", "source_zh": "model_zoo/readme_zh.md", "source_en": "model_zoo/readme.md"},
