@@ -31,6 +31,41 @@ def test_bilingual_docs_have_navigation_and_real_source_content(output):
         assert moss.select_one('[data-source-link]')['href'].endswith('.md')
 
 
+def test_official_native_record_has_local_language_links_and_search(output):
+    for language, prefix, suffix in (('zh', '', '_zh'), ('en', 'en/', '')):
+        route = '/' + prefix + 'docs/official-native-vllm.html'
+        page = BeautifulSoup((output / route.lstrip('/')).read_text(), 'html.parser')
+        assert page.select_one('[data-source-link]')['href'].endswith(
+            f'/docs/vllm_official_native_validation{suffix}.md')
+        links = {link['href'] for link in page.select('.docs-article a[href]')}
+        assert '/' + prefix + 'docs/native-vllm.html' in links
+        assert '/' + prefix + 'docs/deployment-matrix.html' in links
+        assert any('/docs/benchmark/vllm_official_native_20260907.json' in link for link in links)
+        rows = json.loads((output / f'search-{language}.json').read_text())
+        assert any(row['url'] == route and '2026-09-07' in row['title'] for row in rows)
+        deploy = BeautifulSoup((output / prefix / 'deploy/vllm.html').read_text(), 'html.parser')
+        commands = deploy.select_one('[data-section="commands"]').get_text()
+        assert 'FunAudioLLM/Fun-ASR-Nano-2512-vllm' in commands
+        assert 'allendou/' not in commands
+
+
+def test_deployment_limitations_use_short_heading_and_preserve_full_body(output):
+    entries = json.loads((SITE_ROOT / 'data/deployments.json').read_text())['deployments']
+    for language in ('zh', 'en'):
+        for entry in entries:
+            route = entry['routes'][language].lstrip('/')
+            page = BeautifulSoup((output / route).read_text(), 'html.parser')
+            callout = page.select_one('[data-section="limitations"] .limitation-callout')
+            heading = callout.select_one('h2')
+            expected = entry['translations'][language]['primary_limitation']
+            assert heading.get_text() == ('已知限制' if language == 'zh' else 'Known limitations')
+            assert heading.get_text() != expected
+            summary = callout.select_one('p.limitation-summary')
+            assert summary is not None, (language, entry['id'])
+            assert summary.get_text() == expected, (language, entry['id'])
+            assert not callout.select('.eyebrow')
+
+
 def test_search_index_is_bilingual_and_links_to_emitted_pages(output):
     for language in ('zh', 'en'):
         rows = json.loads((output / f'search-{language}.json').read_text())

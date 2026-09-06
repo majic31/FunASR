@@ -362,6 +362,48 @@ for (const viewport of [
   });
 }
 
+for (const language of ['zh', 'en']) {
+  test(`vLLM limitation preserves full revision and wraps on mobile (${language})`, async ({ page }, testInfo) => {
+    const revision = 'a4362c943d48951f98ca2a62181cc028970270c5';
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(`${language === 'en' ? '/en' : ''}/deploy/vllm.html`);
+    await page.evaluate(() => document.fonts.ready);
+
+    const heading = page.locator('.limitation-callout h2');
+    await expect(heading).toHaveText(language === 'en' ? 'Known limitations' : '已知限制');
+    const summary = page.locator('.limitation-callout p.limitation-summary');
+    await expect(summary).toContainText(revision);
+    await summary.scrollIntoViewIfNeeded();
+    const layout = await summary.evaluate((node, revision) => {
+      const text = node.firstChild!;
+      const start = text.textContent!.indexOf(revision);
+      const range = document.createRange();
+      range.setStart(text, start);
+      range.setEnd(text, start + revision.length);
+      const bounds = node.getBoundingClientRect();
+      return {
+        overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        summaryOverflow: node.scrollWidth - node.clientWidth,
+        summaryLeft: bounds.left,
+        summaryRight: bounds.right,
+        fontSize: Number.parseFloat(getComputedStyle(node).fontSize),
+        revisionRects: [...range.getClientRects()].map(rect => ({ left: rect.left, right: rect.right, top: rect.top })),
+      };
+    }, revision);
+    await testInfo.attach('limitation-layout', { body: JSON.stringify(layout), contentType: 'application/json' });
+    await page.screenshot({ path: testInfo.outputPath(`vllm-limitation-${language}-mobile.png`), fullPage: true });
+    await page.locator('.limitation-callout').screenshot({ path: testInfo.outputPath(`vllm-limitation-${language}-callout.png`) });
+
+    expect(layout.overflow).toBeLessThanOrEqual(1);
+    expect(layout.summaryOverflow).toBeLessThanOrEqual(1);
+    expect(layout.fontSize).toBeLessThanOrEqual(18);
+    expect(new Set(layout.revisionRects.map(rect => Math.round(rect.top))).size).toBeGreaterThan(1);
+    expect(layout.revisionRects.every(rect =>
+      rect.left >= layout.summaryLeft - 1 && rect.right <= layout.summaryRight + 1,
+    )).toBe(true);
+  });
+}
+
 test('reduced motion disables smooth scrolling', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/en/');

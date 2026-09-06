@@ -45,7 +45,9 @@ entry to these guides. Source Markdown remains in this repository.
    ./moss_transcribe_diarize_zh.md
    vllm_guide
    vllm_guide_zh
-   vllm_native_funasr_validation
+   vllm_official_native_validation
+   vllm_official_native_validation_zh
+   Historical community vLLM validation (2026-08-13) <vllm_native_funasr_validation>
 
 .. toctree::
    :maxdepth: 1
