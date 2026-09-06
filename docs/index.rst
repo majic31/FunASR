@@ -23,6 +23,7 @@ entry to these guides. Source Markdown remains in this repository.
    model_selection
    model_selection_zh
    cli
+   cli_zh
    migration_from_whisper
    migration_from_whisper_zh
 
