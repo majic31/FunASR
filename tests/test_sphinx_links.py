@@ -34,6 +34,15 @@ GUIDE = '''# Link fixture
 [Body root](../../../outside.txt)
 [Body missing](../../examples/missing.py)
 [Body missing fragment](../training.md#absent-section)
+[Numbered heading](../training.md#1-installation--environment)
+[Unicode heading](../training.md#安装或-import-失败)
+[Encoded heading](../training.md#%E5%AE%89%E8%A3%85%E6%88%96-import-%E5%A4%B1%E8%B4%A5)
+[Punctuation heading](../training.md#llamacpp-or-gguf)
+[Repeated heading](../training.md#repeat-1)
+[Local numbered heading](#2-local--section)
+[Colliding heading](../training.md#collision-1)
+
+## 2. Local & section
 
 | Case | Destination |
 | --- | --- |
@@ -54,6 +63,9 @@ GUIDE = '''# Link fixture
 | missing | [Table missing](../../examples/table-missing.py) |
 | escape | [Table escape](../../../outside.txt) |
 | symlink | [Table symlink](../../examples/escape.txt) |
+| numbered | [Table numbered](../training.md#1-installation--environment) |
+| Unicode | [Table Unicode heading](../training.md#安装或-import-失败) |
+| collision | [Table colliding heading](../training.md#collision-1) |
 
 <a href="//docs.example.test/raw.md" data-label="do not alter">Raw cross-host</a>
 <a href="/other-site/guide.md">Root-relative</a>
@@ -62,6 +74,7 @@ GUIDE = '''# Link fixture
 <span id="local-anchor"></span>
 <a href="../training.md#raw-ABSENT">Raw missing fragment</a>
 <a href="#self-ABSENT">Raw missing self fragment</a>
+<a href="../training.md#collision-1">Raw colliding heading</a>
 
 ```python
 print("../examples/demo.py is code, not a link")
@@ -83,7 +96,15 @@ def built(tmp_path_factory):
     for name in ('guide.md', 'guide_zh.md'):
         (docs / 'tutorial' / name).write_text(GUIDE, encoding='utf-8')
     (docs / 'training.md').write_text(
-        '# Training\n\n## Details\n\nReal destination.\n\n<span id="raw-anchor"></span>\n')
+        '# Training\n\n## Details\n\nReal destination.\n\n<span id="raw-anchor"></span>\n'
+        '\n## 1. Installation & Environment\n\nInstall.\n'
+        '\n## 安装或 `import` 失败\n\nDiagnose.\n'
+        '\n## llama.cpp or GGUF\n\nRuntime.\n'
+        '\n## Repeat\n\nFirst.\n\n## Repeat\n\nSecond.\n'
+        '\n## Collision\n\nFirst collision.\n\n## Collision\n\nSecond collision.\n'
+        '\n## Collision-1\n\nThird collision.\n'
+        '\n<span id="rawcollision"></span>\n\n## Raw.Collision\n\nRaw collision.\n',
+        encoding='utf-8')
     (docs / 'reference.rst').write_text('Reference\n=========\n\nExisting RST page.\n')
     # Sphinx reads this target after tutorial/*, so early doctree access fails.
     (docs / 'zz_later.md').write_text('# Later target\n\n## Details\n\nLate-read destination.\n')
@@ -196,6 +217,72 @@ def test_missing_targets_and_fragments_still_warn(built):
         assert page.find('a', string='Table missing')['href'] == '../../examples/table-missing.py'
         assert page.find('a', string='Table escape')['href'] == '../../../outside.txt'
         assert page.find('a', string='Table symlink')['href'] == '../../examples/escape.txt'
+
+
+@pytest.mark.parametrize('language', ('guide', 'guide_zh'))
+def test_source_heading_fragments_remain_clickable(built, language):
+    from urllib.parse import unquote
+
+    output, pages, log = built
+    target = BeautifulSoup((output / 'training.html').read_text(), 'html.parser')
+    for label, fragment in (
+        ('Numbered heading', '1-installation--environment'),
+        ('Unicode heading', '安装或-import-失败'),
+        ('Encoded heading', '安装或-import-失败'),
+        ('Punctuation heading', 'llamacpp-or-gguf'),
+        ('Repeated heading', 'repeat-1'),
+        ('Table numbered', '1-installation--environment'),
+        ('Table Unicode heading', '安装或-import-失败'),
+    ):
+        link = pages[language].find('a', string=label)
+        assert link is not None, label
+        assert unquote(link['href']) == '../training.html#' + fragment
+        assert target.find(id=fragment), fragment
+        assert not any(fragment in line for line in log.splitlines() if 'WARNING:' in line)
+    local = pages[language].find('a', string='Local numbered heading')
+    assert local is not None
+    assert local['href'] == '#2-local--section'
+    assert pages[language].find(id='2-local--section')
+    # Existing Sphinx IDs are public URLs too; aliases must not replace them.
+    assert target.find(id='details')
+    assert target.find(id='llama-cpp-or-gguf')
+    ids = [element['id'] for element in target.select('[id]')]
+    assert len(ids) == len(set(ids))
+
+
+@pytest.mark.parametrize('language', ('guide', 'guide_zh'))
+@pytest.mark.parametrize('label', ('Colliding heading', 'Table colliding heading', 'Raw colliding heading'))
+def test_colliding_alias_links_reach_the_intended_heading(built, language, label):
+    output, pages, log = built
+    page = BeautifulSoup((output / 'training.html').read_text(), 'html.parser')
+    fragment = pages[language].find('a', string=label)['href'].split('#')[1]
+    target = page.find(id=fragment)
+    section = target if target.name == 'section' else target.find_parent('section')
+    assert 'Second collision.' in section.get_text()
+    assert 'Third collision.' not in section.get_text()
+    assert len(page.select('[id="rawcollision"]')) == 1
+    assert 'rawcollision' in log and '[repository_links.collision]' in log
+    assert page.find(id='collision-1'), 'Do not remove existing Sphinx URLs'
+
+
+@pytest.mark.parametrize('builder', ('text', 'latex'))
+def test_non_html_builders_keep_sphinx_fragment_resolution(tmp_path, builder):
+    docs = tmp_path / 'repo' / 'docs'
+    docs.mkdir(parents=True)
+    shutil.copy2(ROOT / 'docs/conf.py', docs / 'conf.py')
+    shutil.copytree(ROOT / 'docs/_ext', docs / '_ext')
+    (docs / 'index.rst').write_text('Fixture\n=======\n\n.. toctree::\n\n   guide\n   target\n')
+    (docs / 'guide.md').write_text('# Guide\n\n[Valid](target.md#details)\n\n[Missing](target.md#ABSENT)\n')
+    (docs / 'target.md').write_text('# Target\n\n## Details\n\nDestination.\n')
+    result = subprocess.run(
+        [sys.executable, '-m', 'sphinx', '-b', builder, '-n', '-E',
+         str(docs), str(tmp_path / 'output')],
+        text=True, capture_output=True, timeout=90,
+        env={**os.environ, 'PYTHONDONTWRITEBYTECODE': '1'},
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert 'ABSENT' in result.stderr or 'absent' in result.stderr
+    assert 'WARNING' in result.stderr
 
 
 def test_faq_points_to_the_existing_speaker_contract():

@@ -76,8 +76,17 @@ entry to these guides. Source Markdown remains in this repository.
    reference/application
    reference/FQA
 
+.. toctree::
+   :maxdepth: 1
+   :caption: Japanese and Korean Guides
+
+   model_selection_ja
+   deployment_matrix_ja
+   model_selection_ko
+   deployment_matrix_ko
+
 Model weights and runtime choices
---------------------------------
+---------------------------------
 
 - `Model Zoo <https://github.com/modelscope/FunASR/tree/main/model_zoo>`_
 - `Production deployment manuals <https://www.funasr.com/en/deploy/>`_
