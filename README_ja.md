@@ -31,26 +31,34 @@
 ## クイックスタート
 
 ```bash
-pip install funasr
+python -m pip install torch torchaudio
+python -m pip install funasr
 ```
+
+以下は公開サンプルを使う CPU 向けの例です。GPU を使う場合は
+[インストールガイド](./docs/installation/installation.md) に従って互換性のある
+PyTorch/CUDA 環境を用意し、`torch.cuda.is_available()` を確認してから
+`device="cuda"` に変更してください。
 
 ```python
 from funasr import AutoModel
+from funasr.utils.postprocess_utils import rich_transcription_postprocess
 
-model = AutoModel(model="iic/SenseVoiceSmall", vad_model="fsmn-vad", spk_model="cam++", device="cuda")
-result = model.generate(input="meeting.wav")
+model = AutoModel(model="iic/SenseVoiceSmall", vad_model="fsmn-vad", spk_model="cam++", device="cpu")
+result = model.generate(input="https://isv-data.oss-cn-hangzhou.aliyuncs.com/ics/MaaS/ASR/test_audio/asr_example_zh.wav")
+
+for seg in result[0]["sentence_info"]:
+    print(f"[{seg['start']/1000:.1f}s] 話者{seg['spk']}: {rich_transcription_postprocess(seg['sentence'])}")
 ```
 
-**出力** — 話者ラベル・タイムスタンプ・句読点付きの構造化テキスト：
-```
-[00:00.4 → 00:03.8] 話者0: Q3の計画について話し合いましょう。
-[00:04.2 → 00:07.1] 話者1: いいですね。3つのポイントがあります。
-[00:07.5 → 00:12.3] 話者0: どうぞ。あと30分あります。
-```
+実際に返された VAD 区間の開始時刻（秒）、匿名話者番号、SenseVoice タグを
+除いたテキストを表示します。テキストや区間は音声と checkpoint に依存し、
+ここでは固定の認識結果を示していません。
 
-これは1回の `AutoModel` パイプライン呼び出しですが、SenseVoiceSmall、
-FSMN-VAD、CAM++という独立したモデルを組み合わせています。話者分離は
-SenseVoiceSmall自体ではなく、CAM++によって提供されます。
+CAM++ は `spk_embedding` ベクトルを抽出し、`AutoModel` がクラスタリングと
+VAD 区間への話者割り当てを行います。番号は録音内だけで有効で、既知の人物の
+識別や SenseVoiceSmall 単体の出力ではありません。
+詳細は [SDK 契約](./docs/python_api.md) を参照してください。
 
 初めて使う場合は [Colab クイックスタート](./examples/colab/README_ja.md) から試せます。どのモデルを選ぶか迷う場合は [モデル選択ガイド](./docs/model_selection_ja.md) を参照してください。
 
@@ -60,22 +68,21 @@ SenseVoiceSmall自体ではなく、CAM++によって提供されます。
 
 ### なぜFunASRを選ぶのか？
 
-Whisper は単一モデルですが、**FunASR はツールキット**です——用途に応じて
-**Fun-ASR-Nano**（中・英・日と中国語方言・地域アクセント、GPU）、
-**Fun-ASR-MLT-Nano**（31言語）、**SenseVoiceSmall**（5言語ASRと感情・
-音声イベント）、**Paraformer**（低遅延ストリーミング）を選べます。
-下の表はツールキット全体の機能と、それを提供するモデルまたはパイプラインを示します：
+FunASR はツールキットです。タスク、checkpoint、ランタイムを別々に選びます。
+あるモデルやアダプターの機能が、すべての配信バックエンドで使えるとは限りません。
 
-| | FunASR（ツールキット） | Whisper | クラウドAPI |
+| タスク | Checkpoint またはパイプライン | ランタイムの入口 | 主な制約 |
 |---|---|---|---|
-| 最高速度 | **340倍リアルタイム**（Fun-ASR-Nano + vLLM） | 13倍リアルタイム | 〜1倍リアルタイム |
-| 話者認識 | ✅ VAD + CAM++パイプライン | ❌ pyannoteが必要 | ✅ 追加料金 |
-| 感情認識 | ✅ SenseVoice による | ❌ | ❌ |
-| 言語数 | チェックポイントごとに異なる（例：Qwen3-ASR 52、MLT-Nano 31、Nano 中/英/日） | 57 | サービスにより異なる |
-| ストリーミング | ✅ WebSocket（Paraformer） | ❌ | ✅ |
-| CPU対応 | ✅ 17倍リアルタイム（SenseVoice） | ❌ 遅すぎる | 該当なし |
-| セルフホスト | ✅ 対応（ツールキット: MIT、モデルごとに異なる） | ✅ MITライセンス | ❌ クラウドのみ |
-| コスト | 無料 | 無料 | $0.006/分〜 |
+| ファイル認識と感情・イベントタグ | SenseVoiceSmall | Python `AutoModel`、CPU または GPU | 5言語の checkpoint。タグは話者の身元を示しません。 |
+| LLM によるファイル認識 | Fun-ASR-Nano | `AutoModel`、または文書化された GPU 分離エンジン `AutoModelVLLM` | 基本 Nano は中・英・日と中国語方言・アクセント。timestamp は checkpoint と経路に依存します。 |
+| より多くの言語のファイル認識 | Fun-ASR-MLT-Nano | Python `AutoModel` | 独立した31言語 checkpoint。その対応言語を基本 Nano に当てはめないでください。 |
+| チャンク単位のライブ認識 | Paraformer-zh-streaming | ストリーミング SDK または runtime WebSocket | ストリーミング checkpoint とセッション別 cache が必要です。 |
+| 話者付きファイル認識 | SenseVoiceSmall + FSMN-VAD + CAM++ | `AutoModel` の VAD と埋め込みクラスタリング | 番号は録音内の匿名ラベルで、登録済み人物の識別ではありません。 |
+| テキスト・時刻・話者の同時生成 | 第三者 OpenMOSS の MOSS-Transcribe-Diarize | MOSS ガイドの FunASR adapter または上流バックエンド | オフライン、録音内の匿名ラベル。統合経路に外部 VAD/話者モデルは付けません。 |
+| ネイティブ CPU/エッジ認識 | Fun-ASR-Nano または SenseVoiceSmall GGUF | llama.cpp runtime | 対応する変換済み重みが必要。GGUF は Python `AutoModel` 用 checkpoint ではありません。 |
+
+[Model Zoo](./model_zoo/readme.md) と [デプロイ方式](./docs/deployment_matrix_ja.md)
+でインターフェースとライセンスの制約を確認し、対象音声・ハードウェアで評価してください。
 
 ---
 
@@ -83,17 +90,14 @@ Whisper は単一モデルですが、**FunASR はツールキット**です—�
 
 ## ベンチマーク
 
-> 184件の長時間音声（計192分）。[詳細レポート →](https://modelscope.github.io/FunASR/benchmark.html)
+[過去の評価レポート](https://modelscope.github.io/FunASR/benchmark.html) と
+[分離エンジンの測定](./docs/vllm_guide.md#benchmark) に元の結果を残しています。
+別々の記録であり、一般的な速度順位や本番容量を保証するものではありません。
 
-| モデル | 中国語 CER ↓ | GPU速度 | CPU速度 | Whisper-large-v3比 |
-|--------|------|---------|---------|-------------------|
-| **Fun-ASR-Nano**（vLLM） | **8.20%** | **340倍**リアルタイム | — | 🚀 **26倍高速** |
-| **SenseVoice-Small** | **7.81%** | **170倍**リアルタイム | **17倍**リアルタイム | 🚀 **13倍高速** |
-| **Paraformer-Large** | 10.18% | **120倍**リアルタイム | **15倍**リアルタイム | 🚀 **9倍高速** |
-| Whisper-large-v3-turbo | 21.71% | 46倍リアルタイム | ❌ | 3.4倍高速 |
-| Whisper-large-v3 | 20.02% | 13倍リアルタイム | ❌ | ベースライン |
-
-> **ポイント：** FunASRのCPU速度は、WhisperのGPU速度より速い。
+[RTFx と再現性の説明](./docs/benchmark/rtf_reproducibility.md) に従い、
+checkpoint/revision、音声セット、ハードウェア、バッチ、ウォームアップ、計測範囲、
+CER/WER をそろえて比較してください。オフラインのスループットはストリーミングの
+遅延ではありません。[移行評価の例](./examples/migration/) で自分の録音を評価できます。
 
 ---
 
@@ -121,12 +125,17 @@ pip install funasr
 
 ## モデル一覧
 
+第三者モデルも含みます。MOSS-Transcribe-Diarize の公開元は **OpenMOSS** で、
+FunASR はアダプターを提供します。統合経路はオフラインで、匿名話者ラベルは
+録音内だけで有効です。リアルタイム処理や既知の人物の識別ではありません。
+モデルのライセンスはツールキットの MIT ライセンスとは別に確認してください。
+
 | モデル | タスク | 言語 | パラメータ | リンク |
 |--------|--------|------|-----------|--------|
 | **Fun-ASR-Nano** | 認識 | 中/英/日 + 中国語方言 | 800M | [⭐](https://www.modelscope.cn/models/FunAudioLLM/Fun-ASR-Nano-2512) [🤗](https://huggingface.co/FunAudioLLM/Fun-ASR-Nano-2512) [GGUF](https://huggingface.co/FunAudioLLM/Fun-ASR-Nano-GGUF) |
 | **Fun-ASR-MLT-Nano** | 認識 | 31言語 | 800M | [⭐](https://www.modelscope.cn/models/FunAudioLLM/Fun-ASR-MLT-Nano-2512) [🤗](https://huggingface.co/FunAudioLLM/Fun-ASR-MLT-Nano-2512) |
 | **SenseVoiceSmall** | 認識 + 感情 + イベント | 中/英/日/韓/粤 | 234M | [⭐](https://www.modelscope.cn/models/iic/SenseVoiceSmall) [🤗](https://huggingface.co/FunAudioLLM/SenseVoiceSmall) [GGUF](https://huggingface.co/FunAudioLLM/SenseVoiceSmall-GGUF) |
-| **MOSS-Transcribe-Diarize** | オフライン認識 + タイムスタンプ + 匿名話者 | 公式モデルカードを参照 | 公式モデルカードを参照 | [🤗](https://huggingface.co/OpenMOSS-Team/MOSS-Transcribe-Diarize) [ガイド](./docs/moss_transcribe_diarize.md) |
+| **MOSS-Transcribe-Diarize** | 第三者 OpenMOSS：オフライン認識 + タイムスタンプ + 匿名話者 | 公式モデルカードを参照 | 公式モデルカードを参照 | [🤗](https://huggingface.co/OpenMOSS-Team/MOSS-Transcribe-Diarize) [ガイド](./docs/moss_transcribe_diarize.md) |
 | **Paraformer-zh** | 認識 + タイムスタンプ | 中/英 | 220M | [⭐](https://www.modelscope.cn/models/iic/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-pytorch/summary) [🤗](https://huggingface.co/funasr/paraformer-zh) |
 | Qwen3-ASR | 認識、52言語 | 多言語 | 1.7B | [使用法](examples/industrial_data_pretraining/qwen3_asr) |
 | GLM-ASR-Nano | 認識、17言語 | 多言語 | 1.5B | [使用法](examples/industrial_data_pretraining/glm_asr) |

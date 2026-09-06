@@ -63,17 +63,16 @@ from funasr import AutoModel
 model = AutoModel(model="FunAudioLLM/Fun-ASR-Nano-2512", device="cuda")
 result = model.generate(input="https://isv-data.oss-cn-hangzhou.aliyuncs.com/ics/MaaS/ASR/test_audio/asr_example_zh.wav")
 print(result[0]["text"])
-# 欢迎大家来体验达摩院推出的语音识别模型。
 ```
 
 For the separate 31-language checkpoint, use
 [Fun-ASR-MLT-Nano-2512](https://huggingface.co/FunAudioLLM/Fun-ASR-MLT-Nano-2512).
 Language coverage is checkpoint-specific, so Nano and MLT-Nano should be treated as distinct model choices.
 
-On CPU (or for five-language ASR plus emotion and audio-event tags), use
-**SenseVoiceSmall**. The pipeline below composes SenseVoiceSmall with FSMN-VAD
-and CAM++; diarization is provided by the separate CAM++ model, not by the
-SenseVoiceSmall checkpoint:
+For a CPU-first example with five-language ASR plus emotion and audio-event
+tags, use **SenseVoiceSmall**. The pipeline below combines it with FSMN-VAD and
+CAM++ for speaker-aware VAD segments; these are not native speaker outputs of
+the SenseVoiceSmall checkpoint.
 See the [SenseVoice paper](https://arxiv.org/abs/2407.04051),
 [Hugging Face checkpoint](https://huggingface.co/FunAudioLLM/SenseVoiceSmall),
 and [GGUF edge checkpoint](https://huggingface.co/FunAudioLLM/SenseVoiceSmall-GGUF).
@@ -82,7 +81,7 @@ and [GGUF edge checkpoint](https://huggingface.co/FunAudioLLM/SenseVoiceSmall-GG
 from funasr import AutoModel
 from funasr.utils.postprocess_utils import rich_transcription_postprocess
 
-model = AutoModel(model="iic/SenseVoiceSmall", vad_model="fsmn-vad", spk_model="cam++", device="cuda")  # use device="cpu" if you don't have a GPU
+model = AutoModel(model="iic/SenseVoiceSmall", vad_model="fsmn-vad", spk_model="cam++", device="cpu")
 result = model.generate(
     input="https://isv-data.oss-cn-hangzhou.aliyuncs.com/ics/MaaS/ASR/test_audio/asr_example_zh.wav",
     batch_size_s=300,
@@ -93,13 +92,15 @@ for seg in result[0]["sentence_info"]:
     print(f"[{seg['start']/1000:.1f}s] Speaker {seg['spk']}: {rich_transcription_postprocess(seg['sentence'])}")
 ```
 
-**Output** — structured text with speaker labels, timestamps, and punctuation:
-```
-[0.6s] Speaker 0: 欢迎大家来体验达摩院推出的语音识别模型
-```
+This prints each returned segment's start time in seconds, anonymous speaker
+index, and text with SenseVoice tags removed. Text and segment boundaries depend
+on the audio and checkpoint; no fixed transcript is asserted here.
 
-One `AutoModel` pipeline call coordinates the configured ASR, VAD, and speaker
-models and returns the combined result.
+CAM++ extracts `spk_embedding` vectors. `AutoModel` clusters those embeddings
+and assigns speaker indices to VAD segments. Indices are local to a recording,
+not known-person identities. See the [SDK contract](./docs/python_api.md) for
+the component and result boundaries. Change to `device="cuda"` only after
+verifying a compatible GPU environment as described above.
 
 ### Scale & deploy the flagship
 
@@ -120,23 +121,22 @@ results = model.generate(["audio1.wav", "audio2.wav"], language="auto")
 
 ### Why FunASR?
 
-Whisper is a single model; **FunASR is a toolkit** — you pick the right model
-per job: **Fun-ASR-Nano** (Chinese, English, Japanese, and Chinese dialects;
-GPU), **Fun-ASR-MLT-Nano** (31 languages), **SenseVoiceSmall** (five-language
-ASR plus emotion and audio events), and **Paraformer** (low-latency streaming).
-The table shows toolkit-level capabilities and names the model or pipeline that
-provides each one:
+FunASR is a toolkit: choose the task, checkpoint, and runtime separately.
+Support in one model or adapter does not imply support in every serving backend.
 
-| | FunASR (toolkit) | Whisper | Cloud APIs |
+| Task | Checkpoint or pipeline | Runtime entrypoint | Important limitation |
 |---|---|---|---|
-| Top speed | **340x realtime** (Fun-ASR-Nano + vLLM) | 13x realtime | ~1x realtime |
-| Speaker ID | ✅ via VAD + CAM++ pipeline | ❌ Needs pyannote | ✅ Extra cost |
-| Emotion | ✅ via SenseVoice | ❌ | ❌ |
-| Languages | Checkpoint-specific (for example Qwen3-ASR 52, MLT-Nano 31, Nano zh/en/ja) | 57 | Varies |
-| Streaming | ✅ WebSocket (Paraformer) | ❌ | ✅ |
-| CPU viable | ✅ 17x realtime (SenseVoice) | ❌ Too slow | N/A |
-| Self-hosted | ✅ Yes (toolkit: MIT; model licenses vary) | ✅ MIT license | ❌ Cloud only |
-| Cost | Free | Free | $0.006/min+ |
+| File transcription with emotion/event tags | SenseVoiceSmall | Python `AutoModel`, CPU or GPU | Five-language checkpoint; tags do not identify speakers. |
+| LLM-based file transcription | Fun-ASR-Nano | `AutoModel`; split-engine `AutoModelVLLM` for the documented GPU path | Base Nano covers zh/en/ja and Chinese dialects/accents; timestamp support depends on checkpoint and path. |
+| Broader multilingual transcription | Fun-ASR-MLT-Nano | Python `AutoModel` | Separate 31-language checkpoint; do not transfer its coverage to base Nano. |
+| Chunked live transcription | Paraformer-zh-streaming | Streaming SDK or runtime WebSocket service | Use the streaming checkpoint and per-session cache, not an offline checkpoint. |
+| Speaker-aware file transcription | SenseVoiceSmall + FSMN-VAD + CAM++ | `AutoModel` with VAD and embedding clustering | Anonymous indices within a recording, not enrolled-speaker identification. |
+| Joint text, timestamps, and speakers | MOSS-Transcribe-Diarize, third-party OpenMOSS | FunASR adapter or upstream backend in the MOSS guide | Offline, recording-local anonymous labels; no external VAD/speaker pipeline for its unified path. |
+| Native CPU/edge transcription | Fun-ASR-Nano or SenseVoiceSmall GGUF | llama.cpp runtime | Requires matching converted weights; GGUF is not a Python `AutoModel` checkpoint. |
+
+See the [Model Zoo](./model_zoo/readme.md) and [deployment matrix](./docs/deployment_matrix.md)
+for checkpoint, interface, and licensing boundaries. Benchmark on your own audio
+and hardware before choosing a runtime.
 
 Trying FunASR for the first time? Use the [Colab quickstart](./examples/colab/) before setting up a local environment. Choosing a first model? Start with the [model selection guide](./docs/model_selection.md). Planning a switch from Whisper or a cloud ASR provider? Use the [migration guide](./docs/migration_from_whisper.md) and [benchmark example](./examples/migration/) to test representative audio, map features, and roll out safely.
 
@@ -162,12 +162,17 @@ Requirements: Python ≥ 3.8. Install PyTorch + torchaudio first ([pytorch.org](
 
 ## Model Zoo
 
+This list includes third-party models. **OpenMOSS** publishes MOSS-Transcribe-Diarize;
+FunASR provides an adapter, not ownership of its weights. Its unified path is
+offline, with anonymous labels scoped to each recording, not realtime or
+known-person identification. Model licenses are separate from the toolkit's MIT license.
+
 | Model | Task | Languages | Params | Links |
 |-------|------|-----------|--------|-------|
 | **Fun-ASR-Nano** | ASR | zh/en/ja + Chinese dialects and accents | 800M | [⭐](https://www.modelscope.cn/models/FunAudioLLM/Fun-ASR-Nano-2512) [🤗](https://huggingface.co/FunAudioLLM/Fun-ASR-Nano-2512) [GGUF](https://huggingface.co/FunAudioLLM/Fun-ASR-Nano-GGUF) |
 | **Fun-ASR-MLT-Nano** | ASR | 31 languages | 800M | [⭐](https://www.modelscope.cn/models/FunAudioLLM/Fun-ASR-MLT-Nano-2512) [🤗](https://huggingface.co/FunAudioLLM/Fun-ASR-MLT-Nano-2512) |
 | **SenseVoiceSmall** | ASR + emotion + events | zh/en/ja/ko/yue | 234M | [⭐](https://www.modelscope.cn/models/iic/SenseVoiceSmall) [🤗](https://huggingface.co/FunAudioLLM/SenseVoiceSmall) [GGUF](https://huggingface.co/FunAudioLLM/SenseVoiceSmall-GGUF) [paper](https://arxiv.org/abs/2407.04051) |
-| **MOSS-Transcribe-Diarize** | Offline ASR + timestamps + anonymous speakers | See official card | See official card | [🤗](https://huggingface.co/OpenMOSS-Team/MOSS-Transcribe-Diarize) [guide](./docs/moss_transcribe_diarize.md) |
+| **MOSS-Transcribe-Diarize** | Third-party OpenMOSS: offline ASR + timestamps + anonymous speakers | See official card | See official card | [🤗](https://huggingface.co/OpenMOSS-Team/MOSS-Transcribe-Diarize) [guide](./docs/moss_transcribe_diarize.md) |
 | **Paraformer-zh** | ASR + timestamps | zh/en | 220M | [⭐](https://www.modelscope.cn/models/iic/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-pytorch/summary) [🤗](https://huggingface.co/funasr/paraformer-zh) |
 | Paraformer-zh-streaming | Streaming ASR | zh/en | 220M | [⭐](https://modelscope.cn/models/iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-online/summary) [🤗](https://huggingface.co/funasr/paraformer-zh-streaming) |
 | Qwen3-ASR | ASR, 52 languages | multilingual | 1.7B | [usage](examples/industrial_data_pretraining/qwen3_asr) |
@@ -176,7 +181,7 @@ Requirements: Python ≥ 3.8. Install PyTorch + torchaudio first ([pytorch.org](
 | Whisper-large-v3-turbo | ASR + translation | multilingual | 809M | [usage](examples/industrial_data_pretraining/whisper) |
 | ct-punc | Punctuation | zh/en | 290M | [⭐](https://modelscope.cn/models/iic/punc_ct-transformer_cn-en-common-vocab471067-large/summary) [🤗](https://huggingface.co/funasr/ct-punc) |
 | fsmn-vad | VAD | zh/en | 0.4M | [⭐](https://modelscope.cn/models/iic/speech_fsmn_vad_zh-cn-16k-common-pytorch/summary) [🤗](https://huggingface.co/funasr/fsmn-vad) |
-| cam++ | Speaker diarization | — | 7.2M | [⭐](https://modelscope.cn/models/iic/speech_campplus_sv_zh-cn_16k-common/summary) [🤗](https://huggingface.co/funasr/campplus) |
+| cam++ | Speaker embeddings (pipeline component) | — | 7.2M | [⭐](https://modelscope.cn/models/iic/speech_campplus_sv_zh-cn_16k-common/summary) [🤗](https://huggingface.co/funasr/campplus) |
 | emotion2vec+large | Emotion recognition | — | 300M | [⭐](https://modelscope.cn/models/iic/emotion2vec_plus_large/summary) [🤗](https://huggingface.co/emotion2vec/emotion2vec_plus_large) |
 
 ---
@@ -324,17 +329,16 @@ inference on physical Blackwell hardware.
 
 ## Benchmark
 
-> 184 long-form audio files (192 min). [Full report →](https://modelscope.github.io/FunASR/benchmark.html) · [RTFx and reproducibility notes →](./docs/benchmark/rtf_reproducibility.md)
+The [historical benchmark report](https://modelscope.github.io/FunASR/benchmark.html)
+and [split-engine measurements](./docs/vllm_guide.md#benchmark) retain their
+original results. They are separate records, not universal speed rankings or
+production capacity guarantees.
 
-| Model | Chinese CER ↓ | GPU Speed | CPU Speed | vs Whisper-large-v3 |
-|-------|------|-----------|-----------|-------------------|
-| **Fun-ASR-Nano** (vLLM) | **8.20%** | **340x** realtime | — | 🚀 **26x faster** |
-| **SenseVoice-Small** | **7.81%** | **170x** realtime | **17x** realtime | 🚀 **13x faster** |
-| **Paraformer-Large** | 10.18% | **120x** realtime | **15x** realtime | 🚀 **9x faster** |
-| Whisper-large-v3-turbo | 21.71% | 46x realtime | ❌ | 3.4x faster |
-| Whisper-large-v3 | 20.02% | 13x realtime | ❌ | baseline |
-
-> **Key takeaway:** FunASR models run on CPU faster than Whisper runs on GPU.
+Use the [RTFx and reproducibility notes](./docs/benchmark/rtf_reproducibility.md)
+to compare checkpoint/revision, audio set, hardware, batching, warmup, timing
+scope, and CER/WER. Offline throughput is not streaming latency. The
+[migration benchmark example](./examples/migration/) helps measure your own
+recordings with the same evaluation scope.
 
 ---
 
