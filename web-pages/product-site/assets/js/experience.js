@@ -64,9 +64,14 @@
     const query = new URLSearchParams(location.search).get('q');
     if (query) { input.value = query; show(); }
   });
-  if (matchMedia('(max-width: 720px)').matches) {
+  const mobileDocs = matchMedia('(max-width: 720px)');
+  if (mobileDocs.matches) {
     document.querySelectorAll('.docs-sidebar details').forEach((group) => { group.open = false; });
   }
+  mobileDocs.addEventListener('change', ({ matches }) => {
+    const navigation = document.querySelector('.docs-navigation');
+    if (navigation) navigation.open = !matches;
+  });
   document.querySelectorAll('.docs-article pre, .legacy-page article pre').forEach((pre) => {
     if (pre.querySelector('button')) return;
     const text = pre.textContent.trim();

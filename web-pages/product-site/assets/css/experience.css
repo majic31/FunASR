@@ -137,6 +137,8 @@ td, th { padding: 14px; }
 .docs-home { font-weight: 700; color: var(--ink) !important; }
 .docs-sidebar details { margin: 22px 0; }
 .docs-sidebar summary { font-size: 12px; font-weight: 700; padding: 0 10px 6px; cursor: pointer; }
+.docs-sidebar .docs-navigation { margin: 0; }
+.docs-navigation > .docs-navigation-toggle { display: none; }
 .docs-body { min-width: 0; }
 .breadcrumbs { display: flex; flex-wrap: wrap; gap: 8px; color: var(--muted); font-size: 12px; margin-bottom: 32px; }
 .breadcrumbs a { text-decoration: none; }
@@ -243,6 +245,8 @@ td, th { padding: 14px; }
   .docs-sidebar details { display: inline-block; vertical-align: top; width: calc(50% - 8px); margin: 6px 4px 6px 0; }
   .docs-sidebar details:not([open]) nav { display: none; }
   .docs-sidebar details[open] { width: 100%; }
+  .docs-sidebar .docs-navigation { display: block; width: 100%; margin: 4px 0 0; }
+  .docs-navigation > .docs-navigation-toggle { display: list-item; margin-left: 10px; padding: 6px 0; }
   .docs-title h1 { font-size: 29px; }
   .breadcrumbs { margin-bottom: 20px; }
   .docs-groups { gap: 24px; grid-template-columns: 1fr; }

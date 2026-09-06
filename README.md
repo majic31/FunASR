@@ -183,7 +183,7 @@ Requirements: Python ≥ 3.8. Install PyTorch + torchaudio first ([pytorch.org](
 
 ## Usage
 
-> Full examples with parameter docs: [Tutorial →](https://modelscope.github.io/FunASR/tutorial.html)
+> [Python tutorial](./docs/tutorial/README.md) · [SDK parameters and outputs](./docs/python_api.md) · [Training](./docs/training.md) · [Model registration](./docs/model_registration.md)
 
 ```python
 from funasr import AutoModel
@@ -349,6 +349,9 @@ inference on physical Blackwell hardware.
 ---
 
 ## Community
+
+Start with [troubleshooting](./docs/troubleshooting.md) before reporting a problem.
+Include your exact model, runtime, environment and a minimal reproduction.
 
 |  |  |
 |---|---|

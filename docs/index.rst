@@ -13,12 +13,27 @@ entry to these guides. Source Markdown remains in this repository.
    :caption: Get Started
 
    installation/installation
+   installation/installation_zh
    installation/docker
+   installation/docker_zh
+   tutorial/README
+   tutorial/README_zh
+   python_api
+   python_api_zh
    model_selection
    model_selection_zh
    cli
    migration_from_whisper
    migration_from_whisper_zh
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Train and Extend
+
+   training
+   training_zh
+   model_registration
+   model_registration_zh
 
 .. toctree::
    :maxdepth: 1

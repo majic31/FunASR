@@ -3,6 +3,8 @@
 <div class="docs-layout">
   <aside class="docs-sidebar">
     <a class="docs-home" href="{{ '/docs/' if language == 'zh' else '/en/docs/' }}">{{ '文档中心' if language == 'zh' else 'Documentation' }}</a>
+    <details class="docs-navigation" open>
+    <summary class="docs-navigation-toggle">{{ '浏览目录' if language == 'zh' else 'Browse topics' }}</summary>
     {% for group in catalogue.groups %}
     <details open>
       <summary>{{ group[language] }}</summary>
@@ -14,6 +16,7 @@
     </details>
     {% endfor %}
     <a href="{{ '/deploy/' if language == 'zh' else '/en/deploy/' }}">{{ '部署手册' if language == 'zh' else 'Deployment guides' }} &rarr;</a>
+    </details>
   </aside>
   <div class="docs-body">
     <nav class="breadcrumbs" aria-label="{{ '面包屑' if language == 'zh' else 'Breadcrumbs' }}"><a href="{{ '/' if language == 'zh' else '/en/' }}">FunASR</a><span>/</span><a href="{{ '/docs/' if language == 'zh' else '/en/docs/' }}">{{ '文档' if language == 'zh' else 'Docs' }}</a>{% if doc_entry %}<span>/</span><span>{{ doc_entry[language] }}</span>{% endif %}</nav>

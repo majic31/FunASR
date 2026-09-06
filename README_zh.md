@@ -202,7 +202,7 @@ pip install -e ./
 
 ## 使用示例
 
-> 完整参数文档：[教程 →](https://modelscope.github.io/FunASR/zh/tutorial.html)
+> [Python 教程](./docs/tutorial/README_zh.md) · [SDK 参数与输出](./docs/python_api_zh.md) · [训练与微调](./docs/training_zh.md) · [模型注册](./docs/model_registration_zh.md)
 
 ```python
 from funasr import AutoModel
@@ -342,6 +342,8 @@ Blackwell 实机上完成推理验证。
 ---
 
 ## 社区
+
+反馈问题前先查阅[故障排查](./docs/troubleshooting_zh.md)，并附上确切模型、运行时、环境与最小复现。
 
 |  |  |
 |---|---|
