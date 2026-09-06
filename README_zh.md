@@ -53,11 +53,13 @@ PY
 只有这里输出 `True` 时才使用 `device="cuda"`；否则请先使用
 `device="cpu"`，或重新安装匹配 CUDA 的 PyTorch wheel。
 
+以下 SenseVoiceSmall 示例先使用 CPU，并组合 FSMN-VAD 与 CAM++。
+
 ```python
 from funasr import AutoModel
 from funasr.utils.postprocess_utils import rich_transcription_postprocess
 
-model = AutoModel(model="iic/SenseVoiceSmall", vad_model="fsmn-vad", spk_model="cam++", device="cuda")
+model = AutoModel(model="iic/SenseVoiceSmall", vad_model="fsmn-vad", spk_model="cam++", device="cpu")
 result = model.generate(input="https://isv-data.oss-cn-hangzhou.aliyuncs.com/ics/MaaS/ASR/test_audio/asr_example_zh.wav")
 
 # AutoModel pipeline 返回带说话人 id 和时间戳的 VAD 分段：
@@ -65,14 +67,13 @@ for seg in result[0]["sentence_info"]:
     print(f"[{seg['start']/1000:.1f}s] 说话人{seg['spk']}: {rich_transcription_postprocess(seg['sentence'])}")
 ```
 
-**输出** — 带说话人标签、时间戳和标点的结构化文本：
-```
-[0.6s] 说话人0: 欢迎大家来体验达摩院推出的语音识别模型
-```
+代码打印实际返回的 VAD 分段起点（秒）、匿名说话人编号和去除 SenseVoice
+标签后的文本。文本与分段边界取决于音频和 checkpoint，这里不预设转写结果。
 
-这是一次 `AutoModel` pipeline 调用，实际组合了 SenseVoiceSmall、FSMN-VAD
-和 CAM++ 三个独立模型；说话人分离由 CAM++ 提供，并非 SenseVoiceSmall
-checkpoint 的内置输出。
+CAM++ 提取 `spk_embedding` 说话人嵌入，`AutoModel` 再聚类并为 VAD 分段分配
+说话人编号；编号仅在当前录音内有效，不是已知人物身份，也不是 SenseVoiceSmall
+checkpoint 的内置输出。组件和返回字段见 [SDK 契约](./docs/python_api_zh.md)。
+需要 GPU 时，先按上文验证环境，再将 `device` 改为 `"cuda"`。
 SenseVoice 论文见 [arXiv:2407.04051](https://arxiv.org/abs/2407.04051)，
 模型见 [Hugging Face checkpoint](https://huggingface.co/FunAudioLLM/SenseVoiceSmall)，
 边缘部署可用 [GGUF checkpoint](https://huggingface.co/FunAudioLLM/SenseVoiceSmall-GGUF)。
@@ -110,22 +111,21 @@ results = model.generate(["audio1.wav", "audio2.wav"], language="auto")
 
 ### 为什么选 FunASR？
 
-Whisper 是单个模型，**FunASR 是一个工具箱**——按场景挑模型：
-**Fun-ASR-Nano**（中/英/日及中文方言，需 GPU）、
-**Fun-ASR-MLT-Nano**（31 语种）、**SenseVoiceSmall**（五语种 ASR，
-并返回情感与音频事件标签）、**Paraformer**（低延迟流式）。下表展示的是
-工具箱级能力，并标明由哪个模型或 pipeline 提供：
+FunASR 是工具箱，需要分别选择任务、checkpoint 和运行时。
+一个模型或适配器支持的能力，不代表所有服务后端都支持。
 
-| | FunASR（工具箱） | Whisper | 云端 API |
+| 任务 | Checkpoint 或 pipeline | 运行时入口 | 主要边界 |
 |---|---|---|---|
-| 最高速度 | **340 倍实时**（Fun-ASR-Nano + vLLM） | 13 倍实时 | ~1 倍实时 |
-| 说话人识别 | ✅ 由 VAD + CAM++ pipeline 提供 | ❌ 需要 pyannote | ✅ 额外付费 |
-| 情感识别 | ✅ 由 SenseVoice 提供 | ❌ | ❌ |
-| 语言数 | 取决于 checkpoint（例如 Qwen3-ASR 52、MLT-Nano 31、Nano 中/英/日） | 57 | 因服务而异 |
-| 流式识别 | ✅ WebSocket（Paraformer） | ❌ | ✅ |
-| CPU 可用 | ✅ 17 倍实时（SenseVoice） | ❌ 太慢 | 不适用 |
-| 私有部署 | ✅ 支持（工具箱 MIT；模型协议各异） | ✅ MIT 开源 | ❌ 仅云端 |
-| 费用 | 免费 | 免费 | ¥0.04/分钟起 |
+| 文件转写及情感/事件标签 | SenseVoiceSmall | Python `AutoModel`，CPU 或 GPU | 五语种 checkpoint；标签不代表说话人身份。 |
+| LLM 文件转写 | Fun-ASR-Nano | `AutoModel`；文档指定的 GPU 拆分引擎 `AutoModelVLLM` | 基础 Nano 覆盖中/英/日及中文方言/口音；时间戳取决于 checkpoint 和路径。 |
+| 更多语种的文件转写 | Fun-ASR-MLT-Nano | Python `AutoModel` | 独立的 31 语种 checkpoint，不能把其覆盖范围归给基础 Nano。 |
+| 分块实时转写 | Paraformer-zh-streaming | 流式 SDK 或 runtime WebSocket 服务 | 使用流式 checkpoint 和会话独立 cache，不能替换为离线 checkpoint。 |
+| 带说话人的文件转写 | SenseVoiceSmall + FSMN-VAD + CAM++ | `AutoModel` 的 VAD 与嵌入聚类 | 编号仅在当前录音内有效，不是已注册人物身份识别。 |
+| 联合文本、时间戳与说话人 | 第三方 OpenMOSS 的 MOSS-Transcribe-Diarize | MOSS 指南中的 FunASR adapter 或上游后端 | 离线、录音内匿名标签；统一路径不外接 VAD/说话人 pipeline。 |
+| 原生 CPU/端侧转写 | Fun-ASR-Nano 或 SenseVoiceSmall GGUF | llama.cpp runtime | 需要匹配的转换权重，GGUF 不能作为 Python `AutoModel` checkpoint 加载。 |
+
+Checkpoint、接口与协议边界见 [Model Zoo](./model_zoo/readme_zh.md) 和
+[部署矩阵](./docs/deployment_matrix_zh.md)。请用目标音频与硬件评测后再选运行时。
 
 第一次试用 FunASR？可以先跑 [Colab 快速体验](./examples/colab/README_zh.md)，再配置本地环境。还不确定先用哪个模型？先看 [模型选择指南](./docs/model_selection_zh.md)。计划从 Whisper 或云端 ASR 切换？请按 [迁移指南](./docs/migration_from_whisper_zh.md) 和 [评测示例](./examples/migration/) 用代表性音频评测、映射功能并安全上线。
 
@@ -135,17 +135,14 @@ Whisper 是单个模型，**FunASR 是一个工具箱**——按场景挑模型�
 
 ## 性能评测
 
-> 184 条长音频（共 192 分钟）。[完整报告 →](https://modelscope.github.io/FunASR/zh/benchmark.html)
+[历史评测报告](https://modelscope.github.io/FunASR/zh/benchmark.html) 与
+[拆分引擎测量](./docs/vllm_guide_zh.md#benchmark) 保留原始结果。
+两者是独立记录，不能合并成通用速度排名或生产容量承诺。
 
-| 模型 | 中文 CER ↓ | GPU 速度 | CPU 速度 | 对比 Whisper-large-v3 |
-|------|------|----------|----------|---------------------|
-| **Fun-ASR-Nano**（vLLM） | **8.20%** | **340 倍**实时 | — | 🚀 **快 26 倍** |
-| **SenseVoice-Small** | **7.81%** | **170 倍**实时 | **17 倍**实时 | 🚀 **快 13 倍** |
-| **Paraformer-Large** | 10.18% | **120 倍**实时 | **15 倍**实时 | 🚀 **快 9 倍** |
-| Whisper-large-v3-turbo | 21.71% | 46 倍实时 | ❌ | 快 3.4 倍 |
-| Whisper-large-v3 | 20.02% | 13 倍实时 | ❌ | 基准 |
-
-> **一句话：** FunASR 在 CPU 上的速度，比 Whisper 在 GPU 上还快。
+请按 [RTFx 与可复现评测说明](./docs/benchmark/rtf_reproducibility.md) 对齐
+checkpoint/revision、音频集、硬件、批量大小、预热、计时范围与 CER/WER。
+离线吞吐量不等于流式延迟；可使用 [迁移评测示例](./examples/migration/)
+以相同口径测量自己的录音。
 
 ---
 
@@ -181,12 +178,16 @@ pip install -e ./
 
 ## 模型列表
 
+列表包含第三方模型。MOSS-Transcribe-Diarize 由 **OpenMOSS** 发布，FunASR
+提供适配器，并不拥有其权重。统一路径为离线处理，匿名说话人标签仅在当前录音
+内有效，不是实时流式或已知人物身份识别。模型协议与工具箱 MIT 协议分别适用。
+
 | 模型 | 任务 | 语言 | 参数量 | 链接 |
 |------|------|------|--------|------|
 | **Fun-ASR-Nano** | 识别 | 中/英/日 + 中文方言 | 800M | [⭐](https://www.modelscope.cn/models/FunAudioLLM/Fun-ASR-Nano-2512) [🤗](https://huggingface.co/FunAudioLLM/Fun-ASR-Nano-2512) [GGUF](https://huggingface.co/FunAudioLLM/Fun-ASR-Nano-GGUF) |
 | **Fun-ASR-MLT-Nano** | 识别 | 31 种语言 | 800M | [⭐](https://www.modelscope.cn/models/FunAudioLLM/Fun-ASR-MLT-Nano-2512) [🤗](https://huggingface.co/FunAudioLLM/Fun-ASR-MLT-Nano-2512) |
 | **SenseVoiceSmall** | 识别 + 情感 + 事件 | 中/英/日/韩/粤 | 234M | [⭐](https://www.modelscope.cn/models/iic/SenseVoiceSmall) [🤗](https://huggingface.co/FunAudioLLM/SenseVoiceSmall) [GGUF](https://huggingface.co/FunAudioLLM/SenseVoiceSmall-GGUF) [论文](https://arxiv.org/abs/2407.04051) |
-| **MOSS-Transcribe-Diarize** | 离线识别 + 时间戳 + 匿名说话人 | 以官方模型卡为准 | 以官方模型卡为准 | [🤗](https://huggingface.co/OpenMOSS-Team/MOSS-Transcribe-Diarize) [指南](./docs/moss_transcribe_diarize_zh.md) |
+| **MOSS-Transcribe-Diarize** | 第三方 OpenMOSS：离线识别 + 时间戳 + 匿名说话人 | 以官方模型卡为准 | 以官方模型卡为准 | [🤗](https://huggingface.co/OpenMOSS-Team/MOSS-Transcribe-Diarize) [指南](./docs/moss_transcribe_diarize_zh.md) |
 | **Paraformer-zh** | 识别 + 时间戳 | 中/英 | 220M | [⭐](https://www.modelscope.cn/models/iic/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-pytorch/summary) [🤗](https://huggingface.co/funasr/paraformer-zh) |
 | Paraformer-zh-streaming | 流式识别 | 中/英 | 220M | [⭐](https://modelscope.cn/models/iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-online/summary) [🤗](https://huggingface.co/funasr/paraformer-zh-streaming) |
 | Qwen3-ASR | 识别，52 种语言 | 多语言 | 1.7B | [使用](examples/industrial_data_pretraining/qwen3_asr) |
@@ -195,7 +196,7 @@ pip install -e ./
 | Whisper-large-v3-turbo | 识别 + 翻译 | 多语言 | 809M | [使用](examples/industrial_data_pretraining/whisper) |
 | ct-punc | 标点恢复 | 中/英 | 290M | [⭐](https://modelscope.cn/models/iic/punc_ct-transformer_cn-en-common-vocab471067-large/summary) [🤗](https://huggingface.co/funasr/ct-punc) |
 | fsmn-vad | 语音检测 | 中/英 | 0.4M | [⭐](https://modelscope.cn/models/iic/speech_fsmn_vad_zh-cn-16k-common-pytorch/summary) [🤗](https://huggingface.co/funasr/fsmn-vad) |
-| cam++ | 说话人分离 | — | 7.2M | [⭐](https://modelscope.cn/models/iic/speech_campplus_sv_zh-cn_16k-common/summary) [🤗](https://huggingface.co/funasr/campplus) |
+| cam++ | 说话人嵌入（speaker embeddings，pipeline 组件） | — | 7.2M | [⭐](https://modelscope.cn/models/iic/speech_campplus_sv_zh-cn_16k-common/summary) [🤗](https://huggingface.co/funasr/campplus) |
 | emotion2vec+large | 情感识别 | — | 300M | [⭐](https://modelscope.cn/models/iic/emotion2vec_plus_large/summary) [🤗](https://huggingface.co/emotion2vec/emotion2vec_plus_large) |
 
 ---
