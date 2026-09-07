@@ -15,6 +15,7 @@ on:
       - 'examples/openai_api/**/*.md'
       - 'scripts/gen_api_docs.py'
       - 'tests/test_*docs*.py'
+      - 'tests/test_api_signatures.py'
       - 'gh-pages-output/**'
       - 'web-pages/product-site/**'
       - 'web-pages/scripts/**'
@@ -35,6 +36,7 @@ on:
       - 'examples/openai_api/**/*.md'
       - 'scripts/gen_api_docs.py'
       - 'tests/test_*docs*.py'
+      - 'tests/test_api_signatures.py'
       - 'gh-pages-output/**'
       - 'web-pages/product-site/**'
       - 'web-pages/scripts/**'
@@ -89,6 +91,7 @@ jobs:
           tests/test_python_api_docs_contract.py
           tests/test_service_docs_contract.py
           tests/test_generated_api_docs.py
+          tests/test_api_signatures.py
           tests/test_docs_funasr_install_commands.py
           tests/test_moss_transcribe_diarize_docs.py
           -k 'not no_download_toy_against_checkout and not browser_navigation_and_responsive_overflow and not skip_link_preserves_selection_playwright' -q
