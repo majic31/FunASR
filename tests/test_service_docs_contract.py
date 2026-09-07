@@ -18,6 +18,7 @@ READMES = [EXAMPLE / name for name in ("README.md", "README_zh.md", "README_ja.m
 DOCS = [EXAMPLE / "CLIENTS.md", *READMES]
 PACKAGED = ROOT / "funasr/bin/_server_app.py"
 WORKFLOW_DOCS = [EXAMPLE / name for name in ("WORKFLOWS.md", "WORKFLOWS_zh.md")]
+JAVASCRIPT_DOCS = [EXAMPLE / name for name in ("JAVASCRIPT.md", "JAVASCRIPT_zh.md")]
 
 # Frozen from the two pre-edit workflow guides, not translated from one language.
 WORKFLOW_HEADINGS = {
@@ -516,6 +517,172 @@ class WorkflowDocsContract(unittest.TestCase):
             self.assertEqual(len(calls), 1)
             self.assertEqual(downloads, list(args) if name == "transcribe_from_url" else [])
             self.assertTrue(all(handle.closed for handle in handles))
+
+
+class JavaScriptDocsContract(unittest.TestCase):
+    """Source/text contracts only; actual JS execution and TS checking are separate."""
+
+    def test_javascript_preserves_headings_and_resolves_guide_links(self):
+        legacy = [
+            "JavaScript and TypeScript Recipes for the FunASR OpenAI-Compatible API|Preflight|OpenAI JavaScript SDK|Built-in fetch without an SDK|TypeScript helper|Next.js route handler|Production checklist|Troubleshooting",
+            "FunASR OpenAI 兼容 API JavaScript/TypeScript 接入配方|预检查|OpenAI JavaScript SDK|不依赖 SDK 的内置 fetch 写法|TypeScript helper|Next.js route handler|生产检查清单|故障排查",
+        ]
+        for path, expected in zip(JAVASCRIPT_DOCS, legacy):
+            text = path.read_text(encoding="utf-8")
+            prose = re.sub(r"^```[^\n]*\n.*?^```[^\n]*$", "", text, flags=re.M | re.S)
+            self.assertEqual(re.findall(r"(?m)^#{1,6} (.+)$", prose), expected.split("|"))
+            self.assertEqual([len(level) for level in re.findall(r"(?m)^(#{1,6}) ", prose)], [1] + [2] * 7)
+            suffix = "_zh" if path.stem.endswith("_zh") else ""
+            links = re.findall(r"\[[^\]]+\]\(([^)]+)\)", text)
+            self.assertIn(f"../../docs/moss_transcribe_diarize{suffix}.md", links)
+            for link in links:
+                parts = urlsplit(link)
+                if parts.scheme or parts.netloc:
+                    continue
+                target = (path.parent / unquote(parts.path)).resolve()
+                self.assertIn(ROOT.resolve(), target.parents)
+                self.assertNotIn(".mcp-tasks", target.parts)
+                self.assertTrue(target.is_file(), link)
+                if parts.fragment:
+                    self.assertIn(unquote(parts.fragment), headings(target.read_text(encoding="utf-8")), link)
+
+    def test_javascript_startup_and_smoke_use_explicit_source_options(self):
+        for path in JAVASCRIPT_DOCS:
+            text = path.read_text(encoding="utf-8")
+            prefix = text.split("```bash", 1)[0]
+            suffix = "_zh" if path.stem.endswith("_zh") else ""
+            self.assertIn(f"](README{suffix}.md", prefix)
+            self.assertIn(f"](SECURITY{suffix}.md)", prefix)
+            startup = blocks(text, "bash")[0]
+            self.assertIn("cd examples/openai_api", startup)
+            self.assertIn("source ../../.venv/bin/activate", startup)
+            found = set()
+            for code in blocks(text, "bash"):
+                parsed = subprocess.run(["bash", "-n"], input=code, text=True, capture_output=True)
+                self.assertEqual(parsed.returncode, 0, parsed.stderr)
+                for line in code.replace("\\\n", " ").splitlines():
+                    args = shlex.split(line, comments=True)
+                    if len(args) < 2 or args[0] != "python":
+                        continue
+                    self.assertIn(args[1], ("server.py", "smoke_test.py"))
+                    found.add(args[1])
+                    options = {ast.literal_eval(arg) for node in ast.walk(tree(EXAMPLE / args[1]))
+                               if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                               and node.func.attr == "add_argument" for arg in node.args
+                               if isinstance(arg, ast.Constant) and isinstance(arg.value, str)}
+                    self.assertLessEqual({arg for arg in args[2:] if arg.startswith("--")}, options)
+                    self.assertIn("--model", args)
+                    self.assertEqual(args[args.index("--model") + 1], "sensevoice")
+                    if args[1] == "server.py":
+                        self.assertIn("--host", args)
+                        self.assertEqual(args[args.index("--host") + 1], "127.0.0.1")
+                        self.assertEqual(args[args.index("--device") + 1], "cpu")
+                    else:
+                        self.assertEqual(args[args.index("--base-url") + 1], "http://127.0.0.1:8000")
+            self.assertEqual(found, {"server.py", "smoke_test.py"})
+            for endpoint in ("/health", "/v1/models", "/openapi.json"):
+                self.assertIn(endpoint, text)
+
+    def test_javascript_examples_keep_bilingual_code_and_runnable_module_entries(self):
+        texts = [path.read_text(encoding="utf-8") for path in JAVASCRIPT_DOCS]
+        for language in ("javascript", "typescript"):
+            examples = [blocks(text, language) for text in texts]
+            self.assertEqual([len(items) for items in examples], [2, 2])
+            self.assertEqual(examples[0], examples[1])
+        for text in texts:
+            shell = "\n".join(blocks(text, "bash"))
+            self.assertIn("node transcribe.mjs meeting.wav", shell)
+            self.assertIn("node transcribe-fetch.mjs meeting.wav", shell)
+            self.assertRegex(shell, r"npm install openai@\d+\.\d+\.\d+")
+            self.assertIn("app/api/transcribe/route.ts", text)
+            self.assertIn("funasr-client.ts", text)
+            for code in blocks(text, "javascript") + blocks(text, "typescript"):
+                self.assertNotRegex(code, r"[\"']Content-Type[\"']\s*:\s*[\"']multipart/form-data")
+
+    def test_javascript_sdk_stream_lifecycle_is_owned_by_the_caller(self):
+        for path in JAVASCRIPT_DOCS:
+            text = path.read_text(encoding="utf-8")
+            for code in (blocks(text, "javascript")[0], blocks(text, "typescript")[0]):
+                with self.subTest(path=path.name, helper="typescript" if "interface" in code else "javascript"):
+                    self.assertIn('from "node:fs/promises"', code)
+                    self.assertIn('from "node:stream/promises"', code)
+                    self.assertRegex(code, r'await open\(audioPath, ["\']r["\']\)')
+                    self.assertIn("handle.createReadStream()", code)
+                    self.assertRegex(code, r"finished\(file\)\.catch\(")
+                    self.assertIn("toStreamingFile(file, basename(audioPath))", code)
+                    self.assertLess(code.index("finished(file)"), code.index("client.audio.transcriptions.create"))
+                    self.assertRegex(code, r"finally\s*\{\s*file\.destroy\(\);\s*await closed;")
+                    self.assertRegex(code, r"finally\s*\{\s*await handle\.close\(\);")
+                    self.assertNotIn("createReadStream(audioPath)", code)
+                    self.assertNotRegex(code, r"\b(?:access|existsSync)\(audioPath")
+
+    def test_javascript_speaker_union_covers_actual_serialized_values(self):
+        functions = [function(PACKAGED, name) for name in
+                     ("resolve_transcription_language", "build_openai_verbose_json")]
+        namespace = {}
+        exec(compile(ast.Module(body=functions, type_ignores=[]), str(PACKAGED), "exec"), namespace)
+        kinds = set()
+        for speaker in (0, "SPK0", "S01"):
+            result = {"text": "hello", "segments": [{"start": 0, "end": 1, "text": "hello", "speaker": speaker}]}
+            actual = namespace["build_openai_verbose_json"](result)["segments"][0]["speaker"]
+            kinds.add("number" if isinstance(actual, int) else "string")
+        handler = function(EXAMPLE / "server.py", "transcribe")
+        speaker_value = next(node.values[node.keys.index(key)] for node in ast.walk(handler)
+                             if isinstance(node, ast.Dict) for key in node.keys
+                             if isinstance(key, ast.Constant) and key.value == "speaker")
+        self.assertIsNone(eval(compile(ast.Expression(speaker_value), "example-speaker", "eval"), {"seg": {}}))
+        kinds.add("null")
+        for path in JAVASCRIPT_DOCS:
+            helper = blocks(path.read_text(encoding="utf-8"), "typescript")[0]
+            match = re.search(r"speaker\?\s*:\s*([^;}]+)", helper)
+            self.assertIsNotNone(match)
+            self.assertEqual({value.strip() for value in match.group(1).split("|")}, kinds)
+
+    def test_javascript_guides_explain_response_and_forwarding_boundaries(self):
+        for path in JAVASCRIPT_DOCS:
+            text = path.read_text(encoding="utf-8")
+            self.assertIn("](CLIENTS.md#response-formats)", text)
+            for marker in ("sentence_info", "segments=[]", "spk=true", "ctc_timestamps", "use_itn", "hotwords", "Node.js 22"):
+                self.assertIn(marker, text)
+            before_route = text.split("## Next.js route handler", 1)[1].split("```typescript", 1)[0]
+            markers = ("not implemented", "authentication", "upload", "build") if path.name == "JAVASCRIPT.md" else (
+                "未实现", "鉴权", "上传", "build")
+            for marker in markers:
+                self.assertIn(marker, before_route)
+
+    def test_javascript_native_route_has_fixed_upstream_and_bounded_error_contract(self):
+        for path in JAVASCRIPT_DOCS:
+            code = blocks(path.read_text(encoding="utf-8"), "typescript")[1]
+            self.assertRegex(code, r"export const runtime\s*=\s*[\"']nodejs[\"']")
+            self.assertIn("process.env.FUNASR_UPSTREAM_URL", code)
+            self.assertIn("process.env.FUNASR_MODEL", code)
+            self.assertNotIn("NEXT_PUBLIC_", code)
+            self.assertNotRegex(code, r'incoming\.get\([\"\'](?:model|target|url)[\"\']\)')
+            self.assertRegex(code, r"try\s*\{\s*incoming = await request\.formData\(\)")
+            self.assertRegex(code, r"AbortSignal\.timeout\(120_?000\)")
+            self.assertRegex(code, r'redirect:\s*[\"\']error[\"\']')
+            self.assertRegex(code, r"\bsignal\s*[,}]")
+            self.assertRegex(code, r"response\.status\s*>=\s*400")
+            self.assertRegex(code, r"response\.status\s*<=\s*599")
+            self.assertIn("await response.json()", code)
+            self.assertIn("signal.aborted", code)
+            self.assertNotIn("clearTimeout", code)
+            self.assertNotIn("await response.text()", code)
+            self.assertNotIn("error.message", code)
+            self.assertNotIn("from \"next/", code)
+
+    def test_javascript_fetch_cli_does_not_log_raw_upstream_errors(self):
+        for path in JAVASCRIPT_DOCS:
+            code = blocks(path.read_text(encoding="utf-8"), "javascript")[1]
+            self.assertRegex(code, r"AbortSignal\.timeout\(120_?000\)")
+            self.assertRegex(code, r'redirect:\s*[\"\']error[\"\']')
+            self.assertIn("process.exitCode = 1", code)
+            self.assertNotIn("await response.text()", code)
+            self.assertNotIn("error.message", code)
+            fields = re.findall(r'form\.append\([\"\']([^\"\']+)[\"\']', code)
+            self.assertEqual(fields, ["file", "model", "response_format"])
+            allowed = set(form_defaults(function(EXAMPLE / "server.py", "transcribe"))) | {"file"}
+            self.assertLessEqual(set(fields), allowed)
 
 
 if __name__ == "__main__":
