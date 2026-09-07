@@ -1,4 +1,10 @@
 {
+  "localized_pages": [
+    {"language": "ja", "route": "ja/agent.html", "title": "FunASR Agent 連携", "source": "docs/agent_integration_ja.md"},
+    {"language": "ko", "route": "ko/agent.html", "title": "FunASR Agent 연동", "source": "docs/agent_integration_ko.md"},
+    {"language": "ja", "route": "ja/benchmark.html", "title": "ASR ベンチマークの過去の記録", "source": "docs/benchmark/historical_asr_ja.md"},
+    {"language": "ko", "route": "ko/benchmark.html", "title": "과거 ASR 벤치마크 기록", "source": "docs/benchmark/historical_asr_ko.md"}
+  ],
   "groups": [
     {"id": "start", "zh": "开始使用", "en": "Get started"},
     {"id": "models", "zh": "模型与能力", "en": "Models & capabilities"},

@@ -4,9 +4,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import posixpath
 from pathlib import Path
 import shutil
 from bs4 import BeautifulSoup
+from jinja2 import Environment, FileSystemLoader, StrictUndefined, select_autoescape
+
+from documentation import load_catalogue, render_source
 
 ORIGIN = 'https://www.funasr.com'
 ALIASES = {
@@ -63,6 +67,51 @@ def export_documentation(built: Path, output: Path, aliases: dict | None = None)
             target = output / target_prefix / filename
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(str(soup), encoding='utf-8')
+    if aliases is None:
+        export_localized_documentation(built, output, legacy)
+
+
+def export_localized_documentation(built: Path, output: Path, legacy: dict) -> None:
+    """Publish explicitly owned translations without inventing product locales."""
+    catalogue = load_catalogue()
+    entries = catalogue.get('localized_pages', [])
+    if not entries:
+        return
+    # Reuse this build's hashed assets, including the copy icon used by the JS.
+    shell = BeautifulSoup((built / 'en/docs/agent-integration.html').read_text(), 'html.parser')
+    styles = [node['href'] for node in shell.select('link[rel=stylesheet]')]
+    scripts = [node['src'] for node in shell.select('script[src]')]
+    environment = Environment(loader=FileSystemLoader(Path(__file__).parent / 'templates'),
+                              undefined=StrictUndefined, autoescape=select_autoescape(['html']))
+    template = environment.get_template('legacy-localized-doc.html')
+    for entry in entries:
+        language, route = entry['language'], entry['route']
+        prefix = posixpath.dirname(route)
+        extra_routes = {page['source']: posixpath.relpath(page['route'], prefix) for page in entries}
+        content = render_source({f'source_{language}': entry['source']}, language, catalogue,
+                                extra_routes=extra_routes)
+        peer_language = 'ko' if language == 'ja' else 'ja'
+        peer_route = f"{peer_language}/{posixpath.basename(route)}"
+        peer = next((page for page in entries if page['route'] == peer_route), None)
+        soup = BeautifulSoup(template.render(
+            **content, entry=entry, language=language,
+            canonical='https://modelscope.github.io/FunASR/' + route,
+            styles=styles, scripts=scripts, copy_icon=shell.body.get('data-copy-icon', ''),
+            peer_href=posixpath.relpath(peer_route, prefix) if peer else None,
+            peer_label='한국어' if language == 'ja' else '日本語',
+            navigation=[{**page, 'href': posixpath.relpath(page['route'], prefix)}
+                        for page in entries if page['language'] == language],
+        ), 'html.parser')
+        insert_legacy_anchors(soup, legacy['pages'].get(route, {}))
+        for node in soup.find_all(True):
+            for attribute in ('href', 'src', 'action', 'data-copy-icon'):
+                value = node.get(attribute, '')
+                if isinstance(value, str) and value.startswith('/') and not value.startswith('//'):
+                    node[attribute] = (posixpath.relpath(value.lstrip('/'), prefix)
+                                       if value.startswith('/assets/') else ORIGIN + value)
+        target = output / route
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(str(soup), encoding='utf-8')
 
 
 if __name__ == '__main__':

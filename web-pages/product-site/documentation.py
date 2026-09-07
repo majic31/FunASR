@@ -35,6 +35,17 @@ def load_catalogue() -> dict:
             path = (REPO_ROOT / entry[f'source_{language}']).resolve()
             if not path.is_relative_to(REPO_ROOT) or not path.is_file():
                 raise ValueError(f'Missing documentation source: {path}')
+    routes, sources = set(), set()
+    for entry in catalogue.get('localized_pages', []):
+        language, route, relative = entry['language'], entry['route'], entry['source']
+        path = (REPO_ROOT / relative).resolve()
+        if (language not in ('ja', 'ko') or
+                not re.fullmatch(rf'{re.escape(language)}/[a-z0-9-]+\.html', route) or
+                route in routes or path in sources or
+                not path.is_relative_to(REPO_ROOT) or not path.is_file()):
+            raise ValueError(f'Invalid localized documentation owner: {route}')
+        routes.add(route)
+        sources.add(path)
     return catalogue
 
 
@@ -42,15 +53,17 @@ def doc_route(slug: str, language: str) -> str:
     return f'/{"en/" if language == "en" else ""}docs/{slug}.html'
 
 
-def render_source(entry: dict, language: str, catalogue: dict) -> dict:
+def render_source(entry: dict, language: str, catalogue: dict, *, extra_routes: dict | None = None) -> dict:
     relative = entry[f'source_{language}']
     parser = Markdown(extensions=['extra', 'toc', 'sane_lists'],
                       extension_configs={'toc': {'slugify': source_slug}})
     soup = BeautifulSoup(parser.convert((REPO_ROOT / relative).read_text()), 'html.parser')
     local_routes = {}
-    for variant in (('en' if language == 'zh' else 'zh'), language):
+    variants = ('en', 'zh') if language == 'zh' else ('zh', 'en')
+    for variant in variants:
         for page in catalogue['pages']:
             local_routes[page[f'source_{variant}']] = doc_route(page['slug'], variant)
+    local_routes.update(extra_routes or {})
     for element, attr in [('a', 'href'), ('img', 'src')]:
         for node in soup.select(f'{element}[{attr}]'):
             value = str(node[attr])

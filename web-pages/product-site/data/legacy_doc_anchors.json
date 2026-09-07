@@ -7,6 +7,10 @@
   },
   "notes": "Published fragments map to the nearest current topic heading. Consolidated quickstart topics use workflow sections; removed standalone runtime diagnostics use the deployment readiness checklist. Source articles and API reference pages are not rewritten by this compatibility layer.",
   "pages": {
+    "ja/agent.html": {"server": "http-サーバー", "sdk": "sdk-と-curl", "mcp": "mcp-サーバー", "voice": "デスクトップ音声入力", "subtitle": "字幕生成"},
+    "ko/agent.html": {"server": "http-서버", "sdk": "sdk와-curl", "workflows": "워크플로-연동", "mcp": "mcp-서버", "voice": "데스크톱-음성-입력", "subtitle": "자막-생성"},
+    "ja/benchmark.html": {"summary": "過去の概要", "table": "過去の結果", "method": "出典と制約", "choose": "現在の選び方"},
+    "ko/benchmark.html": {"summary": "과거-평가-요약", "table": "과거-평가-결과", "method": "출처와-한계", "choose": "현재-모델-선택"},
     "tutorial.html": {
       "quick": "1-produce-a-first-transcript",
       "install": "1-produce-a-first-transcript",
