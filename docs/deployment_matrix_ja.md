@@ -48,15 +48,22 @@ OpenAI 互換 API を使います。主な入口は次のとおりです。
 
 ### 再現可能な container demo が欲しい
 
-`examples/openai_api/docker-compose.yml` を CPU mode の smoke test として使います。
+Docker Engine と Docker Compose plugin を用意し、**FunASR リポジトリのルート**からローカルの SenseVoice CPU service を起動します。このコマンドは既存の `.env` を上書きしません。明示した port、device、model は、この起動に限り環境から継承した値より優先されます。ホスト側は loopback のみで待ち受けますが、認証 gateway ではありません。共有前に [security guide（英語）](../examples/openai_api/SECURITY.md) を確認してください。
 
 ```bash
-cd examples/openai_api
-cp .env.example .env
-docker compose up --build
+FUNASR_HOST_PORT=127.0.0.1:8000 FUNASR_DEVICE=cpu FUNASR_MODEL=sensevoice \
+  docker compose -f examples/openai_api/docker-compose.yml up --build
 ```
 
-CUDA を使う場合は CUDA-capable PyTorch/FunASR image を作成してから `FUNASR_DEVICE=cuda` に変更し、同じ smoke test で確認します。
+Compose はそのターミナルで実行したままにします。**別のターミナルを開き、同じリポジトリのルート**で Python 3.10 以降を使って確認します。smoke client は標準ライブラリのみを使うため、ホストへの FunASR のインストールは不要です。
+
+```bash
+python3 examples/openai_api/smoke_test.py --base-url http://127.0.0.1:8000 --model sensevoice --response-format verbose_json
+```
+
+現在のディレクトリに `sample.wav` がなければ公開の中国語音声をダウンロードし、既存ファイルがあれば再利用します。health、model metadata、文字起こし JSON が表示されます。テキストは自分で確認してください。終了コードの成功だけでは認識精度や同時実行性能は検証できません。client は Authorization を送信せず、security guide の文字起こし専用 gateway はこの smoke が使う metadata route を拒否します。ローカル endpoint で実行し、機密音声や未加工の出力を残さないでください。
+
+CPU image は example server をコピーしますが、FunASR は PyPI からインストールします。依存バージョンは固定されていません。再現性を主張する前に実際の package version と image digest を記録してください。`FUNASR_DEVICE` の変更だけでは CUDA 依存や container の GPU access は追加されません。GPU image と scheduling は別途用意して検証し、[HTTP deployment guide（英語）](../examples/openai_api/README.md#docker-deployment) とモデルの要件を確認してください。
 
 ### Streaming または live captioning が必要
 

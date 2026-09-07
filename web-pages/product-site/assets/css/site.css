@@ -1004,6 +1004,14 @@ td a {
   filter: brightness(0) invert(1);
 }
 
+.copy-button:hover,
+.copy-button:focus-visible,
+.command-copy:hover,
+.command-copy:focus-visible {
+  border-color: #718096;
+  background: #354357;
+}
+
 .security-list {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 24px;
