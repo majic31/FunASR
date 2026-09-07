@@ -12,8 +12,27 @@ from urllib.parse import unquote, urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 EXAMPLE = ROOT / "examples/openai_api"
-DOCS = [EXAMPLE / name for name in ("CLIENTS.md", "README.md", "README_zh.md")]
+READMES = [EXAMPLE / name for name in ("README.md", "README_zh.md", "README_ja.md", "README_ko.md")]
+DOCS = [EXAMPLE / "CLIENTS.md", *READMES]
 PACKAGED = ROOT / "funasr/bin/_server_app.py"
+
+# Frozen from the pre-edit README inventory, excluding fenced code comments.
+LEGACY_HEADINGS = {
+    "README.md": "FunASR OpenAI-Compatible API Server|API Contract|Quick Start|End-to-end smoke test|Browser demo with Gradio|Usage with OpenAI SDK (Python)|Usage with curl|Available Models|API Endpoints|Agent Framework Integration|LangChain Example|Docker Deployment|Kubernetes Deployment|Configuration|Troubleshooting",
+    "README_zh.md": "FunASR OpenAI 兼容 API 服务|API Contract|快速开始|端到端 smoke test|Gradio 浏览器 Demo|使用 OpenAI SDK|使用 curl|可用模型|API 端点|Agent 与低代码工作流|Docker 部署|Kubernetes 部署|配置|故障排查",
+    "README_ja.md": "FunASR OpenAI 互換 API サーバー|クイックスタート|エンドツーエンド smoke test|Gradio ブラウザデモ|OpenAI SDK で使う|curl で使う|利用できるモデル|API エンドポイント|エージェントとローコードワークフロー|Docker デプロイ|Kubernetes デプロイ|設定|トラブルシューティング",
+    "README_ko.md": "FunASR OpenAI 호환 API 서버|빠른 시작|엔드투엔드 smoke test|Gradio 브라우저 데모|OpenAI SDK로 사용하기|curl로 사용하기|사용 가능한 모델|API 엔드포인트|에이전트 및 로우코드 워크플로|Docker 배포|Kubernetes 배포|설정|문제 해결",
+}
+
+
+def supported_module_command(args):
+    """Allow only the documented environment setup commands, not arbitrary modules."""
+    return args in (["python3.11", "-m", "venv", ".venv"],
+                    ["python", "-m", "pip", "install", "-e", "."],
+                    ["python", "-m", "pip", "install", "fastapi", "uvicorn", "python-multipart"],
+                    ["python", "-m", "pip", "install", "openai"],
+                    ["python", "-m", "pip", "install", "gradio"],
+                    ["python", "-m", "pip", "check"])
 
 
 def blocks(text, language):
@@ -52,6 +71,85 @@ def headings(text):
 
 
 class ServiceDocsContract(unittest.TestCase):
+    def test_preserves_existing_readme_headings(self):
+        for path in READMES:
+            text = path.read_text(encoding="utf-8")
+            source = re.sub(r"^```[^\n]*\n.*?^```[^\n]*$", "", text, flags=re.M | re.S)
+            actual = re.findall(r"^#{1,6}\s+(.+?)\s*#*\s*$", source, re.M)
+            expected = LEGACY_HEADINGS[path.name].split("|")
+            self.assertEqual([value for value in actual if value in expected], expected, path.name)
+
+    def test_long_contract_and_model_explanations_are_readable_lists(self):
+        model_headings = ("Available Models", "可用模型", "利用できるモデル", "사용 가능한 모델")
+        configs = next(node for node in ast.walk(tree(EXAMPLE / "server.py"))
+                       if isinstance(node, ast.Assign) and any(isinstance(target, ast.Name)
+                       and target.id == "MODEL_CONFIGS" for target in node.targets))
+        aliases = [ast.literal_eval(key) for key in configs.value.keys]
+        for path, model_heading in zip(READMES, model_headings):
+            text = path.read_text(encoding="utf-8")
+            for heading in ("API Contract", model_heading):
+                section = text.split("## " + heading + "\n", 1)[1].split("\n## ", 1)[0]
+                self.assertNotRegex(section, r"(?m)^\|", path.name)
+                if heading == model_heading:
+                    self.assertEqual(re.findall(r"(?m)^- `([^`]+)`", section), aliases, path.name)
+
+    def test_module_command_allowlist_rejects_unchecked_variants(self):
+        self.assertTrue(supported_module_command(["python", "-m", "pip", "check"]))
+        for args in (["python", "-m", "missing"], ["python", "-m", "pip", "uninstall", "funasr"],
+                     ["python3.11", "-m", "venv"], ["python", "-m", "pip", "check", "--bogus"]):
+            self.assertFalse(supported_module_command(args))
+
+    def test_readme_checkout_and_loopback_recipes(self):
+        for path in READMES:
+            text = path.read_text(encoding="utf-8")
+            quick_start = blocks(text, "bash")[0]
+            ordered = ["git clone https://github.com/modelscope/FunASR.git FunASR-api", "cd FunASR-api",
+                       "git checkout --detach e19029adca384a06a2f60bd8c18cb98f1a0499aa",
+                       "python3.11 -m venv .venv", "source .venv/bin/activate",
+                       "python -m pip install -e .", "python -m pip install fastapi uvicorn python-multipart",
+                       "python -m pip check", "cd examples/openai_api",
+                       "python server.py --host 127.0.0.1 --model sensevoice --device cpu --port 8000"]
+            positions = [quick_start.index(command) for command in ordered]
+            self.assertEqual(positions, sorted(positions), path.name)
+            self.assertIn("SECURITY", text[:text.index("```bash")])
+            for marker in ("/v1/models", "/openapi.json", "Fun-ASR-MLT-Nano", '--model-path', '--hub',
+                           'model="custom"', 'whisper-1', 'sentence_info', 'ctc_timestamps', '0.0.0.0'):
+                self.assertIn(marker, text, path.name)
+            self.assertIn("FUNASR_HOST_PORT=127.0.0.1:8000 docker compose up --build", text)
+            for code in blocks(text, "bash"):
+                for line in code.replace("\\\n", " ").splitlines():
+                    args = shlex.split(line, comments=True)
+                    if args[:2] == ["docker", "run"]:
+                        self.assertEqual(args[args.index("-p") + 1], "127.0.0.1:8000:8000")
+            self.assertNotRegex(text, r"(?:170|120|3\.6)[x×倍]")
+
+    def test_readme_clients_close_files_and_use_supported_form_fields(self):
+        allowed = set(form_defaults(function(EXAMPLE / "server.py", "transcribe"))) | {"file"}
+        for path in READMES:
+            formats = []
+            for code in blocks(path.read_text(encoding="utf-8"), "python"):
+                parsed = ast.parse(code)
+                calls = [node for node in ast.walk(parsed) if isinstance(node, ast.Call)
+                         and isinstance(node.func, ast.Attribute) and node.func.attr == "create"]
+                for call in calls:
+                    kwargs = {kw.arg: kw.value for kw in call.keywords}
+                    formats.append(ast.literal_eval(kwargs["response_format"]) if "response_format" in kwargs else None)
+                    self.assertEqual(ast.literal_eval(kwargs["model"]), "sensevoice")
+                    self.assertLessEqual(set(kwargs), allowed)
+                    self.assertIsInstance(kwargs["file"], ast.Name)
+                    contexts = [node for node in ast.walk(parsed) if isinstance(node, ast.With)
+                                and call in list(ast.walk(node))]
+                    self.assertTrue(any(isinstance(item.optional_vars, ast.Name)
+                                        and item.optional_vars.id == kwargs["file"].id
+                                        and isinstance(item.context_expr, ast.Call)
+                                        and isinstance(item.context_expr.func, ast.Name)
+                                        and item.context_expr.func.id == "open"
+                                        and len(item.context_expr.args) == 2
+                                        and ast.literal_eval(item.context_expr.args[1]) == "rb"
+                                        for node in contexts for item in node.items))
+            self.assertGreaterEqual(len(formats), 2, path.name)
+            self.assertEqual(set(formats), {None, "verbose_json"}, path.name)
+
     def test_relative_links_and_owned_page_anchors(self):
         owned = {path.resolve() for path in DOCS}
         for path in DOCS:
@@ -101,7 +199,10 @@ class ServiceDocsContract(unittest.TestCase):
             for code in blocks(text, "bash"):
                 for line in code.replace("\\\n", " ").splitlines():
                     args = shlex.split(line, comments=True)
-                    if len(args) < 2 or args[0] not in ("python", "bash"):
+                    if len(args) < 2 or args[0] not in ("python", "python3.11", "bash"):
+                        continue
+                    if args[1] == "-m":
+                        self.assertTrue(supported_module_command(args), args)
                         continue
                     script = EXAMPLE / args[1]
                     self.assertTrue(script.is_file(), str(script))
@@ -129,6 +230,47 @@ class ServiceDocsContract(unittest.TestCase):
                                   isinstance(target, ast.Name) and target.id == name for target in node.targets))
             aliases = [ast.literal_eval(key) for key in assignment.value.keys]
             self.assertEqual("paraformer-en" in aliases, expected)
+
+    def test_example_serializes_sentence_info_not_raw_sdk_timestamps(self):
+        handler = function(EXAMPLE / "server.py", "transcribe")
+        branch = next(node for node in ast.walk(handler) if isinstance(node, ast.If)
+                      and isinstance(node.test, ast.Compare)
+                      and isinstance(node.test.left, ast.Name)
+                      and node.test.left.id == "response_format")
+
+        class CaptureReturn(ast.NodeTransformer):
+            def visit_Return(self, node):
+                return ast.copy_location(ast.Assign(
+                    targets=[ast.Name(id="response", ctx=ast.Store())], value=node.value), node)
+
+        executable = ast.fix_missing_locations(CaptureReturn().visit(ast.Module(body=[branch], type_ignores=[])))
+        clean = function(EXAMPLE / "server.py", "clean_text")
+        namespace = {"re": re, "JSONResponse": lambda value: value, "response_format": "verbose_json",
+                     "elapsed": 0.42, "language": None, "model": "sensevoice", "text": "hello"}
+        exec(compile(ast.Module(body=[clean], type_ignores=[]), "clean-text", "exec"), namespace)
+        raw_token = {"token": "hello", "start_time": 100, "end_time": 400}
+        cases = [({"timestamp": [[100, 400]], "timestamps": [raw_token], "ctc_timestamps": [raw_token]}, []),
+                 ({"sentence_info": [{"start": 100, "end": 400, "text": "<|HAPPY|>hello"}]},
+                  [{"start": 0.1, "end": 0.4, "text": "hello", "speaker": None}])]
+        for result, expected in cases:
+            namespace["result"] = [result]
+            exec(compile(executable, "example-verbose-branch", "exec"), namespace)
+            self.assertEqual(namespace["response"]["segments"], expected)
+            self.assertEqual(namespace["response"]["language"], "auto")
+            self.assertEqual(namespace["response"]["duration"], 0.42)
+
+    def test_workflow_alias_and_compose_host_binding_match_source(self):
+        resolver = function(EXAMPLE / "server.py", "resolve_openai_transcription_model")
+        namespace = {"N8N_OPENAI_MODEL_ALIAS": "whisper-1", "DEFAULT_MODEL": "sensevoice"}
+        exec(compile(ast.Module(body=[resolver], type_ignores=[]), "workflow-alias", "exec"), namespace)
+        self.assertEqual(namespace[resolver.name]("whisper-1"), "sensevoice")
+        self.assertEqual(namespace[resolver.name]("paraformer"), "paraformer")
+        compose = (EXAMPLE / "docker-compose.yml").read_text(encoding="utf-8")
+        self.assertIn('"${FUNASR_HOST_PORT:-8000}:8000"', compose)
+        dockerfile = (EXAMPLE / "Dockerfile").read_text(encoding="utf-8")
+        command = next(json.loads(line[4:]) for line in dockerfile.splitlines() if line.startswith("CMD "))
+        args = shlex.split(command[-1])
+        self.assertEqual(args[args.index("--host") + 1], "0.0.0.0")
 
     def test_startup_defaults_match_source(self):
         for path, expected in ((EXAMPLE / "server.py", "sensevoice"),
