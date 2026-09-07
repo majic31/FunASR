@@ -30,7 +30,7 @@ POSIX 셸과 Python 3.11을 사용해 새 체크아웃과 가상 환경을 만�
 ```bash
 git clone https://github.com/modelscope/FunASR.git FunASR-api
 cd FunASR-api
-git checkout --detach e19029adca384a06a2f60bd8c18cb98f1a0499aa
+git checkout --detach d91d961e37a005837b1523bcc6b09f087877be54
 python3.11 -m venv .venv
 source .venv/bin/activate
 python -m pip install -e .
@@ -86,14 +86,7 @@ curl -fsS http://localhost:8000/v1/audio/transcriptions \
 
 ## Gradio 브라우저 데모
 
-로컬 브라우저에서 파일 업로드나 마이크 입력을 테스트하려면 먼저 API 서버를 시작한 뒤 선택 사항인 Gradio 프런트엔드를 실행합니다.
-
-```bash
-python -m pip install gradio
-python gradio_app.py --base-url http://localhost:8000
-```
-
-이 브라우저 데모는 smoke test와 같은 API 엔드포인트를 호출하는 별도 프런트엔드이며 API에 인증을 추가하지 않습니다. 마이크 권한, Docker, Kubernetes, 프로덕션 참고 사항은 [Gradio 브라우저 데모](GRADIO.md)를 확인하세요.
+로컬 파일을 업로드하거나 마이크로 녹음한 음성을 보내려면 유지 관리되는 [Gradio 브라우저 데모](GRADIO.md)를 참고하세요. 이 API 서버와 별도의 Python 3.12 환경 `.venv-gradio`를 사용합니다. 가이드에서는 `funasr`, `vllm`, `sglang-omni` profiles, 명시적 모델 선택, Docker/Kubernetes 연결, 마이크 권한과 개인정보 보호상의 제한을 다룹니다. UI는 별도의 HTTP 클라이언트이며 인증 게이트웨이나 실시간 전사 서비스가 아닙니다.
 
 ## OpenAI SDK로 사용하기
 
