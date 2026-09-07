@@ -97,6 +97,10 @@ entry to these guides. Source Markdown remains in this repository.
    deployment_matrix_ja
    model_selection_ko
    deployment_matrix_ko
+   agent_integration_ja
+   agent_integration_ko
+   benchmark/historical_asr_ja
+   benchmark/historical_asr_ko
 
 Model weights and runtime choices
 ---------------------------------

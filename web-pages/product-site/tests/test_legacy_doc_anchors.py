@@ -24,6 +24,148 @@ OLD_IDS = {
     'benchmark.html': 'summary table method choose',
 }
 PAGES = [prefix + name for name in OLD_IDS for prefix in ('', 'zh/')]
+LOCALIZED_IDS = {
+    'ja/agent.html': 'server sdk mcp voice subtitle',
+    'ko/agent.html': 'server sdk workflows mcp voice subtitle',
+    'ja/benchmark.html': 'summary table method choose',
+    'ko/benchmark.html': 'summary table method choose',
+}
+
+
+@pytest.mark.parametrize('invalid', ('language', 'escape', 'wrong-prefix', 'duplicate-route', 'duplicate-source'))
+def test_localized_catalogue_rejects_ambiguous_or_unsafe_owners(tmp_path, monkeypatch, invalid):
+    import documentation
+
+    catalogue = json.loads((SITE / 'data/documentation.json').read_text())
+    entry = {'language': 'ja', 'route': 'ja/agent.html', 'title': 'Agent',
+             'source': 'docs/agent_integration.md'}
+    catalogue['localized_pages'] = [entry]
+    if invalid == 'language':
+        entry['language'] = 'fr'
+    elif invalid == 'escape':
+        entry['route'] = '../agent.html'
+    elif invalid == 'wrong-prefix':
+        entry['route'] = 'ko/agent.html'
+    elif invalid == 'duplicate-route':
+        catalogue['localized_pages'].append({**entry, 'source': 'docs/agent_integration_zh.md'})
+    else:
+        catalogue['localized_pages'].append({**entry, 'route': 'ja/benchmark.html'})
+    (tmp_path / 'data').mkdir()
+    (tmp_path / 'data/documentation.json').write_text(json.dumps(catalogue))
+    monkeypatch.setattr(documentation, 'SITE_ROOT', tmp_path)
+    with pytest.raises(ValueError, match='localized'):
+        documentation.load_catalogue()
+
+
+@pytest.fixture(scope='module')
+def localized_exported(tmp_path_factory):
+    from build import build
+    from export_docs import export_documentation
+
+    root = tmp_path_factory.mktemp('localized-legacy-docs')
+    built, output = root / 'built', root / 'pages'
+    build(built)
+    sentinel = output / 'ko/unrelated.html'
+    sentinel.parent.mkdir(parents=True)
+    sentinel.write_text('existing localized page')
+    export_documentation(built, output)
+    assert sentinel.read_text() == 'existing localized page'
+    return built, output
+
+
+@pytest.mark.parametrize('route', LOCALIZED_IDS)
+def test_localized_pages_have_owned_sources_and_real_legacy_anchors(localized_exported, route):
+    from urllib.parse import urlsplit
+
+    built, output = localized_exported
+    path = output / route
+    assert path.is_file(), route
+    language, filename = route.split('/')
+    page = BeautifulSoup(path.read_text(), 'html.parser')
+    assert page.html['lang'] == language
+    assert page.select_one('link[rel=canonical]')['href'] == 'https://modelscope.github.io/FunASR/' + route
+    source = (f'docs/agent_integration_{language}.md' if filename == 'agent.html'
+              else f'docs/benchmark/historical_asr_{language}.md')
+    assert page.select_one('[data-source-link]')['href'].endswith('/' + source)
+    assert (SITE.parents[1] / source).is_file()
+    ids = [node['id'] for node in page.select('[id]')]
+    assert len(ids) == len(set(ids))
+    mapping = json.loads((SITE / 'data/legacy_doc_anchors.json').read_text())['pages'][route]
+    assert set(mapping) == set(LOCALIZED_IDS[route].split())
+    for old, target in mapping.items():
+        anchor = page.select_one('.docs-article').find(id=old)
+        assert anchor is not None and anchor.name == 'span'
+        heading = anchor.find_next_sibling()
+        assert heading.name in ('h2', 'h3') and heading['id'] == target
+    assert page.select_one('.docs-toc a[href^="#"]')
+    assets = [(node, attr) for selector, attr in [('link[rel=stylesheet]', 'href'), ('script[src]', 'src')]
+              for node in page.select(selector)]
+    assert assets and page.body.get('data-copy-icon')
+    for node, attr in assets + [(page.body, 'data-copy-icon')]:
+        assert not urlsplit(node[attr]).scheme and not node[attr].startswith('/')
+        assert (path.parent / node[attr]).is_file()
+    # These legacy translations do not create a fictitious four-language product site.
+    assert not (built / language / 'docs').exists()
+
+
+@pytest.mark.parametrize('language', ('ja', 'ko'))
+def test_localized_historical_cells_and_per_cell_links_are_preserved(localized_exported, language):
+    _, output = localized_exported
+    path = output / language / 'benchmark.html'
+    assert path.is_file()
+    page = BeautifulSoup(path.read_text(), 'html.parser')
+    frozen = json.loads((SITE / 'tests/fixtures/historical_asr_tables.json').read_text())
+    record = next(row for row in frozen['pages'] if row['language'] == language)
+    tables = page.select('.docs-article table')
+    assert len(tables) == len(record['tables']) == 3
+    mapping = {'vllm.html': 'https://www.funasr.com/en/docs/vllm.html', 'agent.html': 'agent.html'}
+    count = 0
+    for table, expected in zip(tables, record['tables']):
+        rows = table.select('tr')
+        assert len(rows) == len(expected['rows'])
+        for row, expected_cells in zip(rows, expected['rows']):
+            cells = row.select('th,td')
+            assert len(cells) == len(expected_cells)
+            for cell, original in zip(cells, expected_cells):
+                assert ' '.join(cell.get_text().split()) == original['text']
+                assert [a['href'] for a in cell.select('a[href]')] == [mapping.get(a, a) for a in original['links']]
+                count += 1
+    assert count == 82
+    original_url = f"https://github.com/modelscope/FunASR/blob/{frozen['source_commit']}/{language}/benchmark.html"
+    assert page.select_one(f'a[href="{original_url}"]')
+    article = page.select_one('.docs-article').get_text(' ', strip=True)
+    for marker in ('11,539', '11,541', '169.6x', '211.8x', 'RTFx', '2026-09-07'):
+        assert marker in article
+
+
+@pytest.mark.parametrize('language', ('ja', 'ko'))
+def test_localized_agent_recipes_match_maintained_contract(localized_exported, language):
+    import ast
+    import re
+    import shlex
+
+    _, output = localized_exported
+    path = output / language / 'agent.html'
+    assert path.is_file()
+    source = (SITE.parents[1] / f'docs/agent_integration_{language}.md').read_text()
+    blocks = re.findall(r'^```(\w+)\n(.*?)^```', source, re.M | re.S)
+    commands = []
+    for kind, block in blocks:
+        if kind == 'python':
+            ast.parse(block)
+        if kind == 'json':
+            assert 'mcpServers' in json.loads(block)
+        for line in block.splitlines():
+            if line.startswith('funasr-server '):
+                command = shlex.split(line)
+                assert command[command.index('--host') + 1] == '127.0.0.1'
+                assert command[command.index('--model') + 1] == 'sensevoice'
+                commands.append(command)
+    assert commands
+    for marker in ('paraformer-en', 'Fun-ASR-MLT-Nano', 'model="custom"', '--model-path', '--hub',
+                   'verbose_json', 'examples/mcp_server/funasr_mcp.py',
+                   'examples/voice_input/funasr_input.py', 'examples/subtitle/generate_subtitle.py'):
+        assert marker in source
 
 
 @pytest.fixture(scope='module')

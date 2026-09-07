@@ -140,6 +140,10 @@ td, th { padding: 14px; }
 .docs-sidebar .docs-navigation { margin: 0; }
 .docs-navigation > .docs-navigation-toggle { display: none; }
 .docs-body { min-width: 0; }
+.legacy-doc-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; max-width: 1328px; padding: 18px 24px; margin: 0 auto; border-bottom: 1px solid var(--line); }
+.legacy-doc-header nav { display: flex; flex-wrap: wrap; gap: 18px; font-size: 13px; }
+.legacy-doc-header a { text-decoration: none; }
+.localized-legacy-doc .docs-article td:nth-child(6) { min-width: 260px; }
 .breadcrumbs { display: flex; flex-wrap: wrap; gap: 8px; color: var(--muted); font-size: 12px; margin-bottom: 32px; }
 .breadcrumbs a { text-decoration: none; }
 .docs-title h1 { font-size: 36px; line-height: 1.4; margin: 0 0 16px; }

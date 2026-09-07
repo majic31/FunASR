@@ -1,5 +1,50 @@
 import { expect, test } from '@playwright/test';
 
+for (const language of ['ja', 'ko']) {
+  for (const filename of ['agent', 'benchmark']) {
+    for (const width of [390, 1440]) {
+      test(`Localized Pages ${language}/${filename} ${width}`, async ({ page, context }) => {
+        await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+        await page.setViewportSize({ width, height: 900 });
+        const errors: string[] = [];
+        page.on('pageerror', error => errors.push(error.message));
+        const response = await page.goto(`/__pages/${language}/${filename}.html`);
+        expect(response!.status()).toBe(200);
+        await expect(page.locator('html')).toHaveAttribute('lang', language);
+        await expect(page.locator('link[rel=canonical]')).toHaveAttribute('href',
+          `https://modelscope.github.io/FunASR/${language}/${filename}.html`);
+        expect((await page.locator('.docs-title h1').boundingBox())!.y).toBeLessThan(450);
+        await page.screenshot({ path: `/tmp/funasr-ja-ko-docs-evidence-20260907/${language}-${filename}-${width}-top.png` });
+        const ids = filename === 'benchmark' ? ['summary', 'table', 'method', 'choose'] :
+          (language === 'ja' ? ['server', 'sdk', 'mcp', 'voice', 'subtitle'] : ['server', 'sdk', 'workflows', 'mcp', 'voice', 'subtitle']);
+        for (const id of ids) {
+          await expect(page.locator(`[id="${id}"]`)).toHaveCount(1);
+          await page.evaluate(fragment => { location.hash = fragment; }, id);
+          expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
+        }
+        const block = page.locator('.docs-article pre').first();
+        const expected = await block.locator('code').innerText();
+        await block.locator('button').click();
+        expect((await page.evaluate(() => navigator.clipboard.readText())).trim()).toBe(expected.trim());
+        if (filename === 'benchmark') {
+          await expect(page.locator('.docs-article table')).toHaveCount(3);
+          const notes = page.locator('.docs-article table').nth(1).locator('td:nth-child(6)');
+          expect(await notes.evaluateAll(nodes => nodes.every(node =>
+            node.getBoundingClientRect().width >= 260 && node.parentElement!.getBoundingClientRect().height < 240))).toBeTruthy();
+          for (const table of await page.locator('.docs-article table').all()) {
+            await table.locator('tr').last().locator('td').last().scrollIntoViewIfNeeded();
+            expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
+          }
+        }
+        await page.screenshot({ path: `/tmp/funasr-ja-ko-docs-evidence-20260907/${language}-${filename}-${width}.png`, fullPage: true });
+        await page.locator('[data-peer-link]').click();
+        await expect(page).toHaveURL(new RegExp(`/__pages/${language === 'ja' ? 'ko' : 'ja'}/${filename}.html$`));
+        expect(errors).toEqual([]);
+      });
+    }
+  }
+}
+
 test('mobile topic navigation leaves the article in the first viewport', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/docs/training.html');

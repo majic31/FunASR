@@ -802,6 +802,806 @@
           ]
         }
       ]
+    },
+    {
+      "language": "ja",
+      "requested_url": "https://modelscope.github.io/FunASR/ja/benchmark.html",
+      "fetched_at_utc": "2026-09-07T11:58:18.583131+00:00",
+      "sha256": "a46ef17b49cfb14c5181f330a4fa11fc0fdc3ecfcfc6a1862bb83bd07ccebc51",
+      "tables": [
+        {
+          "section_id": "summary",
+          "rows": [
+            [
+              {
+                "text": "指標",
+                "links": []
+              },
+              {
+                "text": "結果",
+                "links": []
+              }
+            ],
+            [
+              {
+                "text": "データセット",
+                "links": []
+              },
+              {
+                "text": "中国語の長時間音声 184 ファイル、合計 11,539 秒、192.3 分。",
+                "links": []
+              }
+            ],
+            [
+              {
+                "text": "GPU",
+                "links": []
+              },
+              {
+                "text": "NVIDIA H100 80GB HBM3.",
+                "links": []
+              }
+            ],
+            [
+              {
+                "text": "最高 GPU 速度",
+                "links": []
+              },
+              {
+                "text": "SenseVoice-Small: 169.6x realtime in the full benchmark, 211.8x in the initial run.",
+                "links": []
+              }
+            ],
+            [
+              {
+                "text": "最高 CPU 速度",
+                "links": []
+              },
+              {
+                "text": "SenseVoice-Small: 17.2x realtime; Paraformer-Large: 15.6x realtime.",
+                "links": []
+              }
+            ],
+            [
+              {
+                "text": "ベースライン",
+                "links": []
+              },
+              {
+                "text": "OpenAI Whisper-large-v3: 13.4x realtime on GPU.",
+                "links": []
+              }
+            ]
+          ]
+        },
+        {
+          "section_id": "table",
+          "rows": [
+            [
+              {
+                "text": "モデル",
+                "links": []
+              },
+              {
+                "text": "デバイス",
+                "links": []
+              },
+              {
+                "text": "RTF",
+                "links": []
+              },
+              {
+                "text": "速度",
+                "links": []
+              },
+              {
+                "text": "CER",
+                "links": []
+              },
+              {
+                "text": "メモ",
+                "links": []
+              }
+            ],
+            [
+              {
+                "text": "SenseVoice-Small",
+                "links": []
+              },
+              {
+                "text": "GPU",
+                "links": []
+              },
+              {
+                "text": "0.005896",
+                "links": []
+              },
+              {
+                "text": "169.6x",
+                "links": []
+              },
+              {
+                "text": "7.81%",
+                "links": []
+              },
+              {
+                "text": "ASR + language / emotion / event tags; CER after tag stripping.",
+                "links": []
+              }
+            ],
+            [
+              {
+                "text": "Paraformer-Large",
+                "links": []
+              },
+              {
+                "text": "GPU",
+                "links": []
+              },
+              {
+                "text": "0.008359",
+                "links": []
+              },
+              {
+                "text": "119.6x",
+                "links": []
+              },
+              {
+                "text": "10.18%",
+                "links": []
+              },
+              {
+                "text": "Fast non-autoregressive Chinese ASR with VAD/punctuation pipeline.",
+                "links": []
+              }
+            ],
+            [
+              {
+                "text": "Fun-ASR-Nano",
+                "links": []
+              },
+              {
+                "text": "GPU",
+                "links": []
+              },
+              {
+                "text": "0.058803",
+                "links": []
+              },
+              {
+                "text": "17.0x",
+                "links": []
+              },
+              {
+                "text": "8.06%",
+                "links": []
+              },
+              {
+                "text": "中国語・英語・日本語、7つの中国語方言グループ、26の地域アクセントに対応する LLM-based ASR。hotword に対応。信頼できる checkpoint-native timestamp は未対応（#106）。",
+                "links": [
+                  "https://github.com/QwenAudio/Fun-ASR/issues/106"
+                ]
+              }
+            ],
+            [
+              {
+                "text": "GLM-ASR-Nano",
+                "links": []
+              },
+              {
+                "text": "GPU",
+                "links": []
+              },
+              {
+                "text": "0.026974",
+                "links": []
+              },
+              {
+                "text": "37.1x",
+                "links": []
+              },
+              {
+                "text": "31.07%",
+                "links": []
+              },
+              {
+                "text": "LLM-based multilingual ASR.",
+                "links": []
+              }
+            ],
+            [
+              {
+                "text": "Whisper-large-v3-turbo (OpenAI)",
+                "links": []
+              },
+              {
+                "text": "GPU",
+                "links": []
+              },
+              {
+                "text": "0.021708",
+                "links": []
+              },
+              {
+                "text": "46.1x",
+                "links": []
+              },
+              {
+                "text": "21.71%",
+                "links": []
+              },
+              {
+                "text": "OpenAI Whisper implementation.",
+                "links": []
+              }
+            ],
+            [
+              {
+                "text": "Whisper-large-v3 (OpenAI)",
+                "links": []
+              },
+              {
+                "text": "GPU",
+                "links": []
+              },
+              {
+                "text": "0.074694",
+                "links": []
+              },
+              {
+                "text": "13.4x",
+                "links": []
+              },
+              {
+                "text": "20.02%",
+                "links": []
+              },
+              {
+                "text": "ベースライン for large Whisper quality.",
+                "links": []
+              }
+            ],
+            [
+              {
+                "text": "SenseVoice-Small",
+                "links": []
+              },
+              {
+                "text": "CPU",
+                "links": []
+              },
+              {
+                "text": "0.057988",
+                "links": []
+              },
+              {
+                "text": "17.2x",
+                "links": []
+              },
+              {
+                "text": "7.81%",
+                "links": []
+              },
+              {
+                "text": "CPU run from the remaining benchmark script.",
+                "links": []
+              }
+            ],
+            [
+              {
+                "text": "Paraformer-Large",
+                "links": []
+              },
+              {
+                "text": "CPU",
+                "links": []
+              },
+              {
+                "text": "0.064056",
+                "links": []
+              },
+              {
+                "text": "15.6x",
+                "links": []
+              },
+              {
+                "text": "10.18%",
+                "links": []
+              },
+              {
+                "text": "CPU viable for batch jobs.",
+                "links": []
+              }
+            ],
+            [
+              {
+                "text": "Fun-ASR-Nano",
+                "links": []
+              },
+              {
+                "text": "CPU",
+                "links": []
+              },
+              {
+                "text": "0.274318",
+                "links": []
+              },
+              {
+                "text": "3.6x",
+                "links": []
+              },
+              {
+                "text": "8.06%",
+                "links": []
+              },
+              {
+                "text": "LLM-based model is heavier but still above realtime.",
+                "links": []
+              }
+            ]
+          ]
+        },
+        {
+          "section_id": "choose",
+          "rows": [
+            [
+              {
+                "text": "用途",
+                "links": []
+              },
+              {
+                "text": "推奨モデル",
+                "links": []
+              }
+            ],
+            [
+              {
+                "text": "最速の本番書き起こし",
+                "links": []
+              },
+              {
+                "text": "SenseVoice-Small または Paraformer-Large。",
+                "links": []
+              }
+            ],
+            [
+              {
+                "text": "CPU バッチ書き起こし",
+                "links": []
+              },
+              {
+                "text": "まず SenseVoice-Small。中国語の本番 pipeline では Paraformer-Large。",
+                "links": []
+              }
+            ],
+            [
+              {
+                "text": "中国語・英語・日本語、および中国語の方言/アクセントを扱う LLM-style 認識",
+                "links": []
+              },
+              {
+                "text": "Fun-ASR-Nano。31言語が必要な場合は別 checkpoint の Fun-ASR-MLT-Nano を使用し、LLM decode throughput を高める場合は vLLM を使用。",
+                "links": [
+                  "https://huggingface.co/FunAudioLLM/Fun-ASR-MLT-Nano-2512",
+                  "vllm.html"
+                ]
+              }
+            ],
+            [
+              {
+                "text": "OpenAI 互換ローカル endpoint",
+                "links": []
+              },
+              {
+                "text": "funasr-server を使い、model alias は sensevoice、paraformer、または fun-asr-nano。",
+                "links": [
+                  "agent.html"
+                ]
+              }
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "language": "ko",
+      "requested_url": "https://modelscope.github.io/FunASR/ko/benchmark.html",
+      "fetched_at_utc": "2026-09-07T11:58:18.909945+00:00",
+      "sha256": "9dbbdf30cecc981412a285184387c099b0cb30f6aa50b5f9ba6248f3cb320e03",
+      "tables": [
+        {
+          "section_id": "summary",
+          "rows": [
+            [
+              {
+                "text": "항목",
+                "links": []
+              },
+              {
+                "text": "결과",
+                "links": []
+              }
+            ],
+            [
+              {
+                "text": "Dataset",
+                "links": []
+              },
+              {
+                "text": "184개의 중국어 장문 오디오, 총 11,539초, 192.3분.",
+                "links": []
+              }
+            ],
+            [
+              {
+                "text": "GPU",
+                "links": []
+              },
+              {
+                "text": "NVIDIA H100 80GB HBM3.",
+                "links": []
+              }
+            ],
+            [
+              {
+                "text": "최고 GPU 속도",
+                "links": []
+              },
+              {
+                "text": "SenseVoice-Small: full benchmark에서 169.6x realtime, initial run에서 211.8x.",
+                "links": []
+              }
+            ],
+            [
+              {
+                "text": "최고 CPU 속도",
+                "links": []
+              },
+              {
+                "text": "SenseVoice-Small: 17.2x realtime; Paraformer-Large: 15.6x realtime.",
+                "links": []
+              }
+            ],
+            [
+              {
+                "text": "Baseline",
+                "links": []
+              },
+              {
+                "text": "OpenAI Whisper-large-v3: GPU에서 13.4x realtime.",
+                "links": []
+              }
+            ]
+          ]
+        },
+        {
+          "section_id": "table",
+          "rows": [
+            [
+              {
+                "text": "Model",
+                "links": []
+              },
+              {
+                "text": "Device",
+                "links": []
+              },
+              {
+                "text": "RTF",
+                "links": []
+              },
+              {
+                "text": "Speed",
+                "links": []
+              },
+              {
+                "text": "CER",
+                "links": []
+              },
+              {
+                "text": "Notes",
+                "links": []
+              }
+            ],
+            [
+              {
+                "text": "SenseVoice-Small",
+                "links": []
+              },
+              {
+                "text": "GPU",
+                "links": []
+              },
+              {
+                "text": "0.005896",
+                "links": []
+              },
+              {
+                "text": "169.6x",
+                "links": []
+              },
+              {
+                "text": "7.81%",
+                "links": []
+              },
+              {
+                "text": "ASR + language / emotion / event tags; tag 제거 후 CER 계산.",
+                "links": []
+              }
+            ],
+            [
+              {
+                "text": "Paraformer-Large",
+                "links": []
+              },
+              {
+                "text": "GPU",
+                "links": []
+              },
+              {
+                "text": "0.008359",
+                "links": []
+              },
+              {
+                "text": "119.6x",
+                "links": []
+              },
+              {
+                "text": "10.18%",
+                "links": []
+              },
+              {
+                "text": "VAD/punctuation pipeline과 잘 맞는 빠른 non-autoregressive 중국어 ASR.",
+                "links": []
+              }
+            ],
+            [
+              {
+                "text": "Fun-ASR-Nano",
+                "links": []
+              },
+              {
+                "text": "GPU",
+                "links": []
+              },
+              {
+                "text": "0.058803",
+                "links": []
+              },
+              {
+                "text": "17.0x",
+                "links": []
+              },
+              {
+                "text": "8.06%",
+                "links": []
+              },
+              {
+                "text": "중국어·영어·일본어, 7개 중국어 방언군, 26개 지역 억양을 지원하는 LLM-based ASR. hotword 지원. 신뢰할 수 있는 checkpoint-native timestamp는 미지원 (#106).",
+                "links": [
+                  "https://github.com/QwenAudio/Fun-ASR/issues/106"
+                ]
+              }
+            ],
+            [
+              {
+                "text": "GLM-ASR-Nano",
+                "links": []
+              },
+              {
+                "text": "GPU",
+                "links": []
+              },
+              {
+                "text": "0.026974",
+                "links": []
+              },
+              {
+                "text": "37.1x",
+                "links": []
+              },
+              {
+                "text": "31.07%",
+                "links": []
+              },
+              {
+                "text": "LLM-based multilingual ASR.",
+                "links": []
+              }
+            ],
+            [
+              {
+                "text": "Whisper-large-v3-turbo (OpenAI)",
+                "links": []
+              },
+              {
+                "text": "GPU",
+                "links": []
+              },
+              {
+                "text": "0.021708",
+                "links": []
+              },
+              {
+                "text": "46.1x",
+                "links": []
+              },
+              {
+                "text": "21.71%",
+                "links": []
+              },
+              {
+                "text": "OpenAI Whisper implementation.",
+                "links": []
+              }
+            ],
+            [
+              {
+                "text": "Whisper-large-v3 (OpenAI)",
+                "links": []
+              },
+              {
+                "text": "GPU",
+                "links": []
+              },
+              {
+                "text": "0.074694",
+                "links": []
+              },
+              {
+                "text": "13.4x",
+                "links": []
+              },
+              {
+                "text": "20.02%",
+                "links": []
+              },
+              {
+                "text": "large Whisper quality 기준 baseline.",
+                "links": []
+              }
+            ],
+            [
+              {
+                "text": "SenseVoice-Small",
+                "links": []
+              },
+              {
+                "text": "CPU",
+                "links": []
+              },
+              {
+                "text": "0.057988",
+                "links": []
+              },
+              {
+                "text": "17.2x",
+                "links": []
+              },
+              {
+                "text": "7.81%",
+                "links": []
+              },
+              {
+                "text": "remaining benchmark script에서 수집한 CPU run.",
+                "links": []
+              }
+            ],
+            [
+              {
+                "text": "Paraformer-Large",
+                "links": []
+              },
+              {
+                "text": "CPU",
+                "links": []
+              },
+              {
+                "text": "0.064056",
+                "links": []
+              },
+              {
+                "text": "15.6x",
+                "links": []
+              },
+              {
+                "text": "10.18%",
+                "links": []
+              },
+              {
+                "text": "CPU batch job에도 활용 가능.",
+                "links": []
+              }
+            ],
+            [
+              {
+                "text": "Fun-ASR-Nano",
+                "links": []
+              },
+              {
+                "text": "CPU",
+                "links": []
+              },
+              {
+                "text": "0.274318",
+                "links": []
+              },
+              {
+                "text": "3.6x",
+                "links": []
+              },
+              {
+                "text": "8.06%",
+                "links": []
+              },
+              {
+                "text": "LLM-based model은 더 무겁지만 realtime보다 빠릅니다.",
+                "links": []
+              }
+            ]
+          ]
+        },
+        {
+          "section_id": "choose",
+          "rows": [
+            [
+              {
+                "text": "필요한 것",
+                "links": []
+              },
+              {
+                "text": "추천 model",
+                "links": []
+              }
+            ],
+            [
+              {
+                "text": "가장 빠른 production transcription",
+                "links": []
+              },
+              {
+                "text": "SenseVoice-Small 또는 Paraformer-Large.",
+                "links": []
+              }
+            ],
+            [
+              {
+                "text": "CPU batch transcription",
+                "links": []
+              },
+              {
+                "text": "먼저 SenseVoice-Small; 중국어 production pipeline은 Paraformer-Large.",
+                "links": []
+              }
+            ],
+            [
+              {
+                "text": "중국어·영어·일본어 및 중국어 방언/억양 LLM-style recognition",
+                "links": []
+              },
+              {
+                "text": "Fun-ASR-Nano. 31개 언어는 별도 checkpoint인 Fun-ASR-MLT-Nano를 사용하고, LLM decoding throughput이 중요하면 vLLM.",
+                "links": [
+                  "https://huggingface.co/FunAudioLLM/Fun-ASR-MLT-Nano-2512",
+                  "vllm.html"
+                ]
+              }
+            ],
+            [
+              {
+                "text": "OpenAI 호환 local endpoint",
+                "links": []
+              },
+              {
+                "text": "funasr-server와 model alias sensevoice, paraformer, fun-asr-nano.",
+                "links": [
+                  "agent.html"
+                ]
+              }
+            ]
+          ]
+        }
+      ]
     }
   ]
 }

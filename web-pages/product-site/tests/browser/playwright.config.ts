@@ -18,7 +18,7 @@ export default defineConfig({
     colorScheme: 'light',
   },
   webServer: {
-    command: `${python} build.py --output /tmp/funasr-product-site-browser && ${python} -m http.server 8770 --bind 127.0.0.1 --directory /tmp/funasr-product-site-browser`,
+    command: `${python} build.py --output /tmp/funasr-product-site-browser && ${python} export_docs.py --site /tmp/funasr-product-site-browser --output /tmp/funasr-product-site-browser/__pages && ${python} -m http.server 8770 --bind 127.0.0.1 --directory /tmp/funasr-product-site-browser`,
     cwd: siteRoot,
     url: 'http://127.0.0.1:8770/',
     reuseExistingServer: false,

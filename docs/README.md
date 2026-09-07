@@ -67,6 +67,14 @@ Model weights retain their individual licenses; the FunASR toolkit is MIT licens
 
 ## Build the Product Documentation
 
+Japanese and Korean legacy guides have repository-owned sources:
+[Agent 日本語](agent_integration_ja.md) / [한국어](agent_integration_ko.md),
+[historical ASR 日本語](benchmark/historical_asr_ja.md) / [한국어](benchmark/historical_asr_ko.md).
+The `localized_pages` catalogue exports them to their established `ja/agent.html`,
+`ko/agent.html`, `ja/benchmark.html` and `ko/benchmark.html` GitHub Pages addresses.
+Their old section links are retained. These translations do not create Japanese
+or Korean product-site navigation or search; the full product site remains bilingual.
+
 From the repository root:
 
 ```sh
