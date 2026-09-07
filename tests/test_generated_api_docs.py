@@ -194,7 +194,9 @@ console.log('hash routing passed');
             page = Page((output / "api.html").read_text())
             entries = page.with_class("api-detail")
             self.assertGreater(len(entries), 100)
-            self.assertEqual([attrs["id"] for _, attrs in entries],
+            # New modules may be grouped beside old modules in navigation while
+            # receiving IDs after legacy entries to preserve existing deep links.
+            self.assertEqual(sorted((attrs["id"] for _, attrs in entries), key=lambda value: int(value[1:])),
                              [f"e{i}" for i in range(1, len(entries) + 1)])
 
     def test_skip_link_preserves_selection_playwright(self):
