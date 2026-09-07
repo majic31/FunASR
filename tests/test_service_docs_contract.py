@@ -1,5 +1,6 @@
 """Source-backed service docs checks without loading models or starting servers."""
 
+import argparse
 import ast
 import json
 from pathlib import Path
@@ -19,6 +20,7 @@ DOCS = [EXAMPLE / "CLIENTS.md", *READMES]
 PACKAGED = ROOT / "funasr/bin/_server_app.py"
 WORKFLOW_DOCS = [EXAMPLE / name for name in ("WORKFLOWS.md", "WORKFLOWS_zh.md")]
 JAVASCRIPT_DOCS = [EXAMPLE / name for name in ("JAVASCRIPT.md", "JAVASCRIPT_zh.md")]
+SECURITY_DOCS = [EXAMPLE / name for name in ("SECURITY.md", "SECURITY_zh.md")]
 
 # Frozen from the two pre-edit workflow guides, not translated from one language.
 WORKFLOW_HEADINGS = {
@@ -683,6 +685,158 @@ class JavaScriptDocsContract(unittest.TestCase):
             self.assertEqual(fields, ["file", "model", "response_format"])
             allowed = set(form_defaults(function(EXAMPLE / "server.py", "transcribe"))) | {"file"}
             self.assertLessEqual(set(fields), allowed)
+
+
+class SecurityDocsContract(unittest.TestCase):
+    """Documentation/source contracts, not proxy syntax or authentication execution."""
+
+    def test_security_preserves_headings_levels_and_existing_links(self):
+        expected = [
+            "Security and Gateway Guide for the FunASR OpenAI-Compatible API|Recommended topology|Minimum controls before sharing|NGINX reverse proxy sketch|Caddy reverse proxy sketch|Kubernetes notes|Client configuration|Data handling checklist|Rollout checklist",
+            "FunASR OpenAI 兼容 API 安全与网关指南|推荐拓扑|对团队开放前的最低控制项|NGINX 反向代理示例|Caddy 反向代理示例|Kubernetes 注意事项|客户端配置|数据处理清单|上线检查清单",
+        ]
+        for path, legacy in zip(SECURITY_DOCS, expected):
+            text = path.read_text(encoding="utf-8")
+            prose = re.sub(r"^```[^\n]*\n.*?^```[^\n]*$", "", text, flags=re.M | re.S)
+            self.assertEqual(re.findall(r"(?m)^#{1,6} (.+)$", prose), legacy.split("|"))
+            self.assertEqual([len(level) for level in re.findall(r"(?m)^(#{1,6}) ", prose)], [1] + [2] * 8)
+            suffix = "_zh" if path.stem.endswith("_zh") else ""
+            links = re.findall(r"\[[^\]]+\]\(([^)]+)\)", text)
+            for link in (f"README{suffix}.md", "CLIENTS.md", f"WORKFLOWS{suffix}.md",
+                         f"GRADIO{suffix}.md", f"kubernetes/README{suffix}.md", "../../SECURITY.md"):
+                self.assertIn(link, links)
+            for link in links:
+                parsed = urlsplit(link)
+                if parsed.scheme or parsed.netloc:
+                    continue
+                target = (path.parent / unquote(parsed.path)).resolve()
+                self.assertIn(ROOT.resolve(), target.parents)
+                self.assertNotIn(".mcp-tasks", target.parts)
+                self.assertTrue(target.is_file(), link)
+                if parsed.fragment:
+                    self.assertIn(unquote(parsed.fragment), headings(target.read_text(encoding="utf-8")), link)
+
+    def test_security_proxy_and_python_examples_are_bilingual(self):
+        texts = [path.read_text(encoding="utf-8") for path in SECURITY_DOCS]
+        for language in ("nginx", "caddyfile", "bash"):
+            examples = [blocks(text, language) for text in texts]
+            self.assertTrue(examples[0], language)
+            normalized = [["\n".join(line.strip() for line in code.splitlines()
+                                      if line.strip() and not line.lstrip().startswith("#"))
+                           for code in items] for items in examples]
+            self.assertEqual(normalized[0], normalized[1], language)
+        examples = [blocks(text, "python") for text in texts]
+        self.assertEqual([len(items) for items in examples], [1, 1])
+        self.assertEqual(ast.dump(ast.parse(examples[0][0])), ast.dump(ast.parse(examples[1][0])))
+
+    def test_security_backend_binding_matches_source_and_is_explicit(self):
+        for source in (EXAMPLE / "server.py", ROOT / "funasr/bin/server.py"):
+            host = next(node for node in ast.walk(tree(source)) if isinstance(node, ast.Call)
+                        and isinstance(node.func, ast.Attribute) and node.func.attr == "add_argument"
+                        and node.args and isinstance(node.args[0], ast.Constant) and node.args[0].value == "--host")
+            self.assertEqual(ast.literal_eval(next(k.value for k in host.keywords if k.arg == "default")), "0.0.0.0")
+        self.assertIn('${FUNASR_HOST_PORT:-8000}:8000', (EXAMPLE / "docker-compose.yml").read_text())
+        for path in SECURITY_DOCS:
+            text = path.read_text(encoding="utf-8")
+            prefix = text.split("```nginx", 1)[0]
+            for marker in ("127.0.0.1", "0.0.0.0", "FUNASR_HOST_PORT=127.0.0.1:8000", "ClusterIP"):
+                self.assertIn(marker, prefix)
+            recipes = blocks(text, "bash")
+            for recipe in recipes:
+                parsed = subprocess.run(["bash", "-n"], input=recipe, text=True, capture_output=True)
+                self.assertEqual(parsed.returncode, 0, parsed.stderr)
+            startup = next(code for code in recipes if "python server.py" in code)
+            self.assertIn("cd examples/openai_api", startup)
+            self.assertIn("source ../../.venv/bin/activate", startup)
+            args = shlex.split(next(line for line in startup.splitlines() if line.startswith("python server.py")))
+            self.assertEqual(args[args.index("--host") + 1], "127.0.0.1")
+            self.assertEqual(args[args.index("--model") + 1], "sensevoice")
+            self.assertEqual(args[args.index("--device") + 1], "cpu")
+
+    def test_security_nginx_requires_basic_auth_and_restricts_route(self):
+        for path in SECURITY_DOCS:
+            code = blocks(path.read_text(encoding="utf-8"), "nginx")[0]
+            code = "\n".join(line for line in code.splitlines() if not line.lstrip().startswith("#"))
+            for directive in ("ssl_certificate ", "ssl_certificate_key ", "auth_basic ",
+                              "auth_basic_user_file ", "client_max_body_size "):
+                self.assertIn(directive, code)
+            realms = re.findall(r"(?m)^\s*auth_basic\s+([^;\n]+);", code)
+            self.assertEqual(len(realms), 1)
+            realm = shlex.split(realms[0])
+            self.assertEqual(len(realm), 1)
+            self.assertTrue(realm[0].strip())
+            self.assertNotEqual(realm[0].lower(), "off")
+            self.assertRegex(code, r"location\s+=\s+/v1/audio/transcriptions\s*\{")
+            self.assertRegex(code, r"limit_except\s+POST\s*\{\s*deny\s+all;")
+            self.assertRegex(code, r"location\s+/\s*\{\s*return\s+404;\s*\}")
+            self.assertEqual(len(re.findall(r"\bproxy_pass\b", code)), 1)
+            self.assertRegex(code, r"proxy_pass\s+http://127\.0\.0\.1:8000;")
+            self.assertIn('proxy_set_header Authorization "";', code)
+            self.assertNotIn("$http_authorization", code)
+
+    def test_security_caddy_orders_auth_before_body_and_proxy(self):
+        for path in SECURITY_DOCS:
+            code = blocks(path.read_text(encoding="utf-8"), "caddyfile")[0]
+            self.assertRegex(code, r"@transcribe\s*\{\s*path /v1/audio/transcriptions\s+method POST\s*\}")
+            self.assertRegex(code, r"handle @transcribe\s*\{\s*route\s*\{")
+            self.assertIn("basic_auth {", code)
+            self.assertLess(code.index("basic_auth {"), code.index("request_body {"))
+            self.assertLess(code.index("request_body {"), code.index("reverse_proxy "))
+            self.assertEqual(code.count("reverse_proxy "), 1)
+            self.assertIn("reverse_proxy 127.0.0.1:8000", code)
+            self.assertIn("header_up -Authorization", code)
+            self.assertRegex(code, r'handle\s*\{\s*respond "Not found" 404\s*\}')
+            self.assertRegex(code, r"(?m)^\s*tls /\S+ /\S+$")
+
+    def test_security_covers_registered_routes_and_unimplemented_controls(self):
+        routes = set()
+        for source in (EXAMPLE / "server.py", PACKAGED):
+            for node in ast.walk(tree(source)):
+                if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr in ("get", "post"):
+                    if node.args and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str):
+                        if node.args[0].value.startswith("/"):
+                            routes.add(node.args[0].value)
+        self.assertEqual(routes, {"/health", "/v1/models", "/v1/audio/transcriptions", "/asr"})
+        for path in SECURITY_DOCS:
+            text = path.read_text(encoding="utf-8")
+            for route in routes | {"/openapi.json", "/docs", "/redoc"}:
+                inline_code = re.findall(r"`([^`\n]+)`", text)
+                self.assertTrue(any(route in value.split() for value in inline_code), route)
+            for marker in ("200m", "600s", "NetworkPolicy", "CORS"):
+                self.assertIn(marker, text)
+            markers = ("not implemented", "model admission", "temporary", "cancel") if path.name == "SECURITY.md" else (
+                "未实现", "模型准入", "临时", "取消")
+            for marker in markers:
+                self.assertIn(marker, text)
+
+    def test_security_client_distinguishes_basic_from_bearer_and_local_smoke(self):
+        for path in SECURITY_DOCS:
+            text = path.read_text(encoding="utf-8")
+            client_section = text.split("## Client configuration" if path.name == "SECURITY.md" else "## 客户端配置", 1)[1].split("\n## ", 1)[0]
+            for marker in ("Basic", "Bearer", "api_key", "OIDC", "mTLS"):
+                self.assertIn(marker, client_section)
+            curl = next(code for code in blocks(text, "bash") if "curl " in code)
+            args = shlex.split(curl.replace("\\\n", " "))
+            self.assertEqual(args[0], "curl")
+            # Parse only this recipe's option set; argparse also expands short-flag clusters.
+            parser = argparse.ArgumentParser(add_help=False, allow_abbrev=False)
+            for short, long in (("-k", "--insecure"), ("-L", "--location"),
+                                ("-f", "--fail"), ("-S", "--show-error"), ("-s", "--silent")):
+                parser.add_argument(short, long, action="store_true")
+            for short, long in (("-u", "--user"), ("-m", "--max-time"),
+                                ("-o", "--output"), ("-w", "--write-out")):
+                parser.add_argument(short, long)
+            parser.add_argument("-F", "--form", action="append")
+            options, operands = parser.parse_known_args(args[1:])
+            self.assertFalse(options.insecure)
+            self.assertFalse(options.location)
+            self.assertEqual(operands, ["https://funasr.example.com/v1/audio/transcriptions"])
+            self.assertEqual(options.user, "team_user")
+            self.assertEqual(options.output, "/dev/null")
+            markers = ("unauthenticated local", "does not send", "not a Bearer") if path.name == "SECURITY.md" else (
+                "无鉴权本地", "不发送", "不是 Bearer")
+            for marker in markers:
+                self.assertIn(marker, text)
 
 
 if __name__ == "__main__":
