@@ -6,6 +6,8 @@ from pathlib import Path
 import re
 import shlex
 import subprocess
+import tempfile
+from types import SimpleNamespace
 import unittest
 from urllib.parse import unquote, urlsplit
 
@@ -15,6 +17,13 @@ EXAMPLE = ROOT / "examples/openai_api"
 READMES = [EXAMPLE / name for name in ("README.md", "README_zh.md", "README_ja.md", "README_ko.md")]
 DOCS = [EXAMPLE / "CLIENTS.md", *READMES]
 PACKAGED = ROOT / "funasr/bin/_server_app.py"
+WORKFLOW_DOCS = [EXAMPLE / name for name in ("WORKFLOWS.md", "WORKFLOWS_zh.md")]
+
+# Frozen from the two pre-edit workflow guides, not translated from one language.
+WORKFLOW_HEADINGS = {
+    "WORKFLOWS.md": "Low-code Workflow Recipes for the FunASR OpenAI-Compatible API|Server preflight|Postman smoke test|Multipart HTTP request|Dify custom tool or HTTP node|Direct file upload path|Audio URL path|n8n HTTP Request node|n8n OpenAI Audio node|Webhook worker pattern|Production guardrails|Troubleshooting",
+    "WORKFLOWS_zh.md": "FunASR OpenAI 兼容 API 低代码工作流配方|服务预检|Postman smoke test|Multipart HTTP 请求|Dify 自定义工具或 HTTP 节点|直接上传文件|音频 URL 转写|n8n HTTP Request 节点|n8n OpenAI Audio 节点|Webhook worker 模式|生产环境护栏|故障排查",
+}
 
 # Frozen from the pre-edit README inventory, excluding fenced code comments.
 LEGACY_HEADINGS = {
@@ -315,6 +324,198 @@ class ServiceDocsContract(unittest.TestCase):
         self.assertIn("not audio duration", clients)
         self.assertIn("Audio duration in seconds", clients)
         self.assertIn("does not enable diarization", clients)
+
+
+class WorkflowDocsContract(unittest.TestCase):
+    def test_workflow_explanatory_sections_use_complete_readable_lists(self):
+        sections = [
+            (("Multipart HTTP request", "Multipart HTTP 请求"),
+             ["Method", "URL", "Body type", "File field", "Text field", "Text field", "Timeout"],
+             [("POST",), ("/v1/audio/transcriptions",), ("multipart/form-data",), ("`file`",),
+              ("model=sensevoice",), ("response_format=verbose_json",), ("300",)]),
+            (("n8n HTTP Request node", "n8n HTTP Request 节点"),
+             ["Method", "URL", "Send Body", "Body Content Type", "Binary file field", "Additional form fields", "Response Format", "Timeout"],
+             [("POST",), ("/v1/audio/transcriptions",), ("enabled",), ("Form-Data", "multipart"),
+              ("`file`",), ("model=sensevoice", "response_format=verbose_json"), ("JSON",), ()]),
+        ]
+        symptoms = [
+            ["Workflow can call `/health` but transcription fails", "`localhost` connection fails from Dify or n8n",
+             "Response has no usable `segments`", "Requests time out", "First request is slow", "Unknown model alias"],
+            ["工作流能访问 `/health`，但转写失败", "Dify 或 n8n 访问 `localhost` 失败", "响应中没有可用 `segments`",
+             "请求超时", "第一次请求很慢", "模型别名未知"],
+        ]
+        fixes = [("multipart/form-data", "`file`"), ("Compose", "Kubernetes"),
+                 ("sentence_info", "verbose_json"), ("HTTP timeout",), ("--model sensevoice", "/health"), ("/v1/models",)]
+        for language, path in enumerate(WORKFLOW_DOCS):
+            text = path.read_text(encoding="utf-8")
+            cases = [*sections, (("Troubleshooting", "故障排查"), symptoms[language], fixes)]
+            for titles, labels, tokens in cases:
+                with self.subTest(path=path.name, section=titles[language]):
+                    section = text.split("## " + titles[language] + "\n", 1)[1].split("\n## ", 1)[0]
+                    self.assertNotRegex(section, r"(?m)^\s*\|")
+                    self.assertNotRegex(section, r"(?i)<table\b")
+                    lines = section.splitlines()
+                    start = next((i for i, line in enumerate(lines) if line.startswith("- **")), None)
+                    self.assertIsNotNone(start, "Missing explanation list")
+                    items = []
+                    for line in lines[start:]:
+                        if not line.startswith("- "):
+                            break
+                        match = re.fullmatch(r"- \*\*(.+?):\*\* (.+)", line)
+                        self.assertIsNotNone(match, line)
+                        items.append(match.groups())
+                    self.assertEqual([label for label, _ in items], labels)
+                    for (_, value), required in zip(items, tokens):
+                        for token in required:
+                            self.assertIn(token, value)
+
+    def test_preserves_workflow_headings_and_links(self):
+        for path in WORKFLOW_DOCS:
+            text = path.read_text(encoding="utf-8")
+            source = re.sub(r"^```[^\n]*\n.*?^```[^\n]*$", "", text, flags=re.M | re.S)
+            actual = re.findall(r"^(#{1,6}) (.+)$", source, re.M)
+            titles = WORKFLOW_HEADINGS[path.name].split("|")
+            levels = [1, 2, 2, 2, 2, 3, 3, 2, 3, 2, 2, 2]
+            self.assertEqual([(len(level), title) for level, title in actual], list(zip(levels, titles)))
+            suffix = "_zh" if path.stem.endswith("_zh") else ""
+            preserved = {"WORKFLOWS.md" if suffix else "WORKFLOWS_zh.md",
+                         f"POSTMAN{suffix}.md", f"OPENAPI{suffix}.md", f"SECURITY{suffix}.md",
+                         f"../../docs/moss_transcribe_diarize{suffix}.md"}
+            links = set(re.findall(r"\[[^\]]+\]\(([^)]+)\)", text))
+            self.assertLessEqual(preserved, links)
+            for link in links:
+                parts = urlsplit(link)
+                if parts.scheme or parts.netloc:
+                    continue
+                target = (path.parent / unquote(parts.path)).resolve()
+                self.assertIn(ROOT.resolve(), target.parents)
+                self.assertNotIn(".mcp-tasks", target.parts)
+                self.assertTrue(target.is_file(), link)
+                if parts.fragment:
+                    self.assertIn(unquote(parts.fragment), headings(target.read_text(encoding="utf-8")), link)
+
+    def test_workflow_preflight_uses_prepared_loopback_server(self):
+        options = {ast.literal_eval(arg) for node in ast.walk(tree(EXAMPLE / "server.py"))
+                   if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                   and node.func.attr == "add_argument" for arg in node.args
+                   if isinstance(arg, ast.Constant) and isinstance(arg.value, str)}
+        for path in WORKFLOW_DOCS:
+            text = path.read_text(encoding="utf-8")
+            prefix = text.split("```bash", 1)[0]
+            suffix = "_zh" if path.stem.endswith("_zh") else ""
+            self.assertIn(f"](README{suffix}.md", prefix)
+            self.assertIn(f"](SECURITY{suffix}.md)", prefix)
+            self.assertIn(f"](../../docs/agent_integration{suffix}.md)", text)
+            startup = blocks(text, "bash")[0]
+            commands = [shlex.split(line, comments=True) for line in startup.splitlines() if line.strip()]
+            self.assertIn(["source", "../../.venv/bin/activate"], commands)
+            launches = [args for args in commands if args[:2] == ["python", "server.py"]]
+            self.assertEqual(len(launches), 1)
+            args = launches[0]
+            for option, expected in (("--host", "127.0.0.1"), ("--model", "sensevoice"), ("--device", "cpu")):
+                self.assertIn(option, args)
+                self.assertEqual(args[args.index(option) + 1], expected)
+            self.assertLessEqual({arg for arg in args if arg.startswith("--")}, options)
+
+    def test_workflow_url_assignments_are_copyable_and_checks_are_explicit(self):
+        for path in WORKFLOW_DOCS:
+            codes = blocks(path.read_text(encoding="utf-8"), "bash")
+            assignments = []
+            for code in codes:
+                self.assertNotRegex(code, r"<[^\n>]+>")
+                result = subprocess.run(["bash", "-n"], input=code, text=True, capture_output=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                for line in code.replace("\\\n", " ").splitlines():
+                    args = shlex.split(line, comments=True)
+                    if args[:1] == ["export"]:
+                        assignments.extend(arg for arg in args[1:] if arg.startswith("FUNASR_BASE_URL="))
+            self.assertEqual(assignments, ["FUNASR_BASE_URL=http://127.0.0.1:8000"])
+            for endpoint in ("health", "v1/models", "openapi.json"):
+                self.assertIn(f'"$FUNASR_BASE_URL/{endpoint}"', "\n".join(codes))
+
+    def test_workflow_json_examples_match_actual_service_response_builders(self):
+        handler = function(EXAMPLE / "server.py", "transcribe")
+        response = next(node for node in ast.walk(handler) if isinstance(node, ast.Dict)
+                        and any(isinstance(key, ast.Constant) and key.value == "duration" for key in node.keys))
+        example = eval(compile(ast.Expression(response), "example-response", "eval"),
+                       {"text": "recognized speech", "segments": [], "language": None,
+                        "elapsed": 0.42, "model": "sensevoice"})
+        namespace = {}
+        functions = [function(PACKAGED, name) for name in
+                     ("_split_text_for_openai_segments", "build_openai_fallback_segments",
+                      "resolve_transcription_language", "build_openai_verbose_json")]
+        exec(compile(ast.Module(body=functions, type_ignores=[]), str(PACKAGED), "exec"), namespace)
+        result = {"text": "recognized speech", "duration": 3.2, "language": "en",
+                  "segments": namespace["build_openai_fallback_segments"]("recognized speech", 3.2)}
+        packaged = namespace["build_openai_verbose_json"](result)
+        for path in WORKFLOW_DOCS:
+            text = path.read_text(encoding="utf-8")
+            samples = [json.loads(code) for code in blocks(text, "json")]
+            self.assertEqual(samples, [example, packaged], path.name)
+            self.assertIn("](CLIENTS.md#response-formats)", text)
+            for marker in ("sentence_info", "segments=[]", "spk=true", "ctc_timestamps", "use_itn", "hotwords"):
+                self.assertIn(marker, text)
+        for speaker in (None, 0, "SPK0", "S01"):
+            result["segments"][0]["speaker"] = speaker
+            segment = namespace["build_openai_verbose_json"](result)["segments"][0]
+            if speaker is None:
+                self.assertNotIn("speaker", segment)
+            else:
+                self.assertEqual(segment["speaker"], speaker)
+
+    def test_workflow_url_worker_warns_before_code_and_declares_dependency(self):
+        for path in WORKFLOW_DOCS:
+            text = path.read_text(encoding="utf-8")
+            section = text.split("### Audio URL path" if path.name == "WORKFLOWS.md" else "### 音频 URL 转写", 1)[1]
+            warning = section.split("```python", 1)[0]
+            markers = ("not implemented", "redirect", "private-network", "byte", "trusted") if path.name == "WORKFLOWS.md" else (
+                "未实现", "重定向", "私网", "字节", "可信")
+            for marker in markers:
+                self.assertIn(marker, warning)
+            self.assertIn("python -m pip install requests", text[:text.index("```python")])
+
+    def test_workflow_python_examples_are_equivalent_and_send_real_multipart_fields(self):
+        snippets = [blocks(path.read_text(encoding="utf-8"), "python") for path in WORKFLOW_DOCS]
+        self.assertEqual([len(items) for items in snippets], [2, 2])
+        self.assertEqual([ast.dump(ast.parse(code)) for code in snippets[0]],
+                         [ast.dump(ast.parse(code)) for code in snippets[1]])
+        allowed = set(form_defaults(function(EXAMPLE / "server.py", "transcribe"))) | {"file"}
+        for code, name in zip(snippets[0], ("transcribe_from_url", "transcribe_bytes")):
+            calls = []
+            handles = []
+            payload = b"test audio bytes, no acoustic inference"
+
+            def post(url, *, files, data, timeout):
+                self.assertEqual(urlsplit(url).path, "/v1/audio/transcriptions")
+                self.assertEqual(set(files), {"file"})
+                self.assertLessEqual(set(data) | set(files), allowed)
+                self.assertEqual(data, {"model": "sensevoice", "response_format": "verbose_json"})
+                self.assertGreater(timeout, 0)
+                body = files["file"][1]
+                if hasattr(body, "read"):
+                    handles.append(body)
+                    body = body.read()
+                self.assertEqual(body, payload)
+                calls.append(url)
+                return SimpleNamespace(raise_for_status=lambda: None, json=lambda: {"text": "hello", "segments": []})
+
+            downloads = []
+
+            def get(url, *, timeout):
+                downloads.append(url)
+                self.assertGreater(timeout, 0)
+                return SimpleNamespace(content=payload, raise_for_status=lambda: None)
+
+            parsed = ast.parse(code)
+            # Substitute only the HTTP boundary; execute the documented worker body unchanged.
+            parsed.body = [node for node in parsed.body if not isinstance(node, (ast.Import, ast.ImportFrom))]
+            namespace = {"Path": Path, "tempfile": tempfile, "requests": SimpleNamespace(get=get, post=post)}
+            exec(compile(parsed, name, "exec"), namespace)
+            args = ("https://storage.example.invalid/approved.wav",) if name == "transcribe_from_url" else ("audio.wav", payload)
+            self.assertEqual(namespace[name](*args), {"text": "hello", "segments": []})
+            self.assertEqual(len(calls), 1)
+            self.assertEqual(downloads, list(args) if name == "transcribe_from_url" else [])
+            self.assertTrue(all(handle.closed for handle in handles))
 
 
 if __name__ == "__main__":
