@@ -18,6 +18,7 @@
     {"slug": "moss-transcribe-diarize", "group": "models", "zh": "MOSS 转写与说话人分离", "en": "MOSS transcription & diarization", "source_zh": "docs/moss_transcribe_diarize_zh.md", "source_en": "docs/moss_transcribe_diarize.md"},
     {"slug": "model-zoo", "group": "models", "zh": "Model Zoo", "en": "Model Zoo", "source_zh": "model_zoo/readme_zh.md", "source_en": "model_zoo/readme.md"},
     {"slug": "streaming-vad", "group": "models", "zh": "流式语音活动检测", "en": "Streaming voice activity detection", "source_zh": "docs/streaming_vad_zh.md", "source_en": "docs/streaming_vad.md"},
+    {"slug": "keyword-spotting", "group": "models", "zh": "关键词检测", "en": "Keyword spotting", "source_zh": "docs/keyword_spotting_zh.md", "source_en": "docs/keyword_spotting.md"},
     {"slug": "training", "group": "train", "zh": "微调与评测", "en": "Fine-tuning & evaluation", "source_zh": "docs/training_zh.md", "source_en": "docs/training.md"},
     {"slug": "model-registration", "group": "train", "zh": "自定义模型注册", "en": "Custom model registration", "source_zh": "docs/model_registration_zh.md", "source_en": "docs/model_registration.md"},
     {"slug": "docker", "group": "deploy", "zh": "容器环境与镜像选择", "en": "Containers & image selection", "source_zh": "docs/installation/docker_zh.md", "source_en": "docs/installation/docker.md"},
