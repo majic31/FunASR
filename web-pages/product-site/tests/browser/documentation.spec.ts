@@ -1,5 +1,52 @@
 import { expect, test } from '@playwright/test';
 
+for (const prefix of ['', '/en']) {
+  for (const width of [320, 390, 1440]) {
+    for (const slug of ['gradio', 'kubernetes']) {
+      test(`Service guide ${slug} ${prefix || '/zh'} ${width}`, async ({ page, context }) => {
+        await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+        await page.setViewportSize({ width, height: 900 });
+        const errors: string[] = [];
+        page.on('pageerror', error => errors.push(error.message));
+        await page.goto(`${prefix}/docs/`);
+        await page.locator('[data-doc-search] input').fill(slug === 'gradio' ? 'Gradio' : 'Kubernetes');
+        const route = `${prefix}/docs/${slug}.html`;
+        await page.locator(`.search-results a[href="${route}"]`).click();
+        await expect(page).toHaveURL(new RegExp(`${route}$`));
+        await expect(page.locator('.docs-article')).toBeVisible();
+        expect((await page.locator('.docs-title h1').boundingBox())!.y).toBeLessThan(450);
+        await page.screenshot({ path: `/tmp/funasr-kubernetes-docs-evidence-20260908/${slug}-${prefix ? 'en' : 'zh'}-${width}-top.png` });
+        const block = page.locator('.docs-article pre').first();
+        const expected = await block.locator('code').innerText();
+        await block.locator('button').click();
+        expect((await page.evaluate(() => navigator.clipboard.readText())).trim()).toBe(expected.trim());
+        for (const heading of await page.locator('.docs-article h2, .docs-article h3').all()) {
+          await heading.scrollIntoViewIfNeeded();
+          expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
+        }
+        if (slug === 'gradio') {
+          await expect(page.locator('.docs-article h2')).toHaveCount(5);
+          await page.goto(`${prefix}/docs/http-server.html`);
+          await page.locator(`.docs-article a[href="${route}"]`).first().click();
+          await expect(page).toHaveURL(new RegExp(`${route}$`));
+        } else {
+          const moss = page.locator('.docs-article h3').filter({ hasText: 'MOSS GPU' });
+          await moss.scrollIntoViewIfNeeded();
+          await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+          await page.screenshot({ path: `/tmp/funasr-kubernetes-docs-evidence-20260908/kubernetes-${prefix ? 'en' : 'zh'}-${width}-moss.png` });
+        }
+        await page.locator(`.docs-article a[href="${prefix}/docs/security.html"]`).click();
+        await expect(page).toHaveURL(new RegExp(`${prefix}/docs/security.html$`));
+        await page.goto(route);
+        const peer = `${prefix ? '' : '/en'}/docs/${slug}.html`;
+        await page.locator(`a[href="${peer}"]`).first().click();
+        await expect(page).toHaveURL(new RegExp(`${peer}$`));
+        expect(errors).toEqual([]);
+      });
+    }
+  }
+}
+
 for (const language of ['ja', 'ko']) {
   for (const filename of ['agent', 'benchmark']) {
     for (const width of [390, 1440]) {

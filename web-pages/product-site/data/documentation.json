@@ -46,6 +46,7 @@
     {"slug": "community", "group": "ecosystem", "zh": "社区集成", "en": "Community integrations", "source_zh": "docs/community_projects_zh.md", "source_en": "docs/community_projects.md"},
     {"slug": "repositories", "group": "ecosystem", "zh": "四仓职责与贡献入口", "en": "Repositories & contribution paths", "source_zh": "docs/repository_roles_zh.md", "source_en": "docs/repository_roles.md"},
     {"slug": "javascript", "group": "ecosystem", "zh": "JavaScript 客户端", "en": "JavaScript clients", "source_zh": "examples/openai_api/JAVASCRIPT_zh.md", "source_en": "examples/openai_api/JAVASCRIPT.md"},
+    {"slug": "gradio", "group": "ecosystem", "zh": "Gradio 浏览器客户端", "en": "Gradio browser client", "source_zh": "examples/openai_api/GRADIO_zh.md", "source_en": "examples/openai_api/GRADIO.md"},
     {"slug": "workflows", "group": "ecosystem", "zh": "工作流集成", "en": "Workflow integrations", "source_zh": "examples/openai_api/WORKFLOWS_zh.md", "source_en": "examples/openai_api/WORKFLOWS.md"},
     {"slug": "service-api", "group": "reference", "zh": "HTTP API 契约", "en": "HTTP API contract", "source_zh": "examples/openai_api/OPENAPI_zh.md", "source_en": "examples/openai_api/OPENAPI.md"},
     {"slug": "websocket-protocol", "group": "reference", "zh": "C++ WebSocket 协议", "en": "C++ WebSocket protocol", "source_zh": "runtime/docs/websocket_protocol_zh.md", "source_en": "runtime/docs/websocket_protocol.md"},
