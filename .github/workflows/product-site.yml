@@ -91,6 +91,7 @@ jobs:
           tests/test_python_api_docs_contract.py
           tests/test_streaming_vad_docs.py
           tests/test_kws_docs.py
+          tests/test_speaker_emotion_docs.py
           tests/test_service_docs_contract.py
           tests/test_generated_api_docs.py
           tests/test_api_signatures.py

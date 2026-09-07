@@ -54,6 +54,9 @@ print(result[0]["text"])
 
 ## 流水线组件
 
+声纹向量及 SenseVoice 原始／展示标签见[说话人与情感指南](../docs/speaker_emotion_zh.md)。
+句末关键词检测见独立的 [KWS 指南](../docs/keyword_spotting_zh.md)。
+
 | 组件 | 别名 | 模型卡 | 不包含的能力 |
 | --- | --- | --- | --- |
 | 语音活动检测 | `fsmn-vad` | [ModelScope](https://modelscope.cn/models/iic/speech_fsmn_vad_zh-cn-16k-common-pytorch/summary) / [HF](https://huggingface.co/funasr/fsmn-vad) | 不转写语音，也不识别人名。 |

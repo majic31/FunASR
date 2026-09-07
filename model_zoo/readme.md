@@ -57,6 +57,10 @@ interchangeable ASR checkpoint.
 
 ## Pipeline components
 
+For speaker vectors and SenseVoice raw/display tags, use the
+[speaker and emotion guide](../docs/speaker_emotion.md). For utterance-end KWS,
+use the separate [keyword spotting guide](../docs/keyword_spotting.md).
+
 | Component | Alias | Model cards | What it does not do |
 | --- | --- | --- | --- |
 | Voice activity detection | `fsmn-vad` | [ModelScope](https://modelscope.cn/models/iic/speech_fsmn_vad_zh-cn-16k-common-pytorch/summary) / [HF](https://huggingface.co/funasr/fsmn-vad) | Does not transcribe speech or identify a speaker. |
