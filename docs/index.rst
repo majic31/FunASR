@@ -40,6 +40,8 @@ entry to these guides. Source Markdown remains in this repository.
    :maxdepth: 1
    :caption: Models and Deployment
 
+   streaming_vad
+   streaming_vad_zh
    deployment_matrix
    deployment_matrix_zh
    ./moss_transcribe_diarize.md
