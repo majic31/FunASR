@@ -103,7 +103,7 @@ model = AutoModelVLLM(model="FunAudioLLM/Fun-ASR-Nano-2512", tensor_parallel_siz
 results = model.generate(["audio1.wav", "audio2.wav"], language="auto")
 ```
 
-> **部署为 API 服务：** `funasr-server --device cuda` → 本地 OpenAI 兼容接口 localhost:8000
+> **部署为 API 服务：** [本地 SenseVoice CPU 配方](#部署) · [Nano GPU 服务与固定版本 vLLM 环境](./docs/vllm_guide_zh.md)
 >
 > **接入 AI Agent：** [MCP 服务](examples/mcp_server/) 支持 Claude/Cursor · [OpenAI API](examples/openai_api/README_zh.md) 支持 LangChain/Dify/AutoGen
 >
@@ -273,26 +273,35 @@ funasr *.wav --output-format srt --output-dir ./output
 
 ## 部署
 
+在新目录中使用 POSIX shell 和 Python 3.11，启动本地 SenseVoice CPU 服务。
+下面将 PyPI 发布包安装到独立环境，不是安装当前源码 checkout。服务不内置鉴权，
+请保留 loopback 监听；向其他客户端开放前先阅读[安全指南](./examples/openai_api/SECURITY_zh.md)。
+
 ```bash
-# OpenAI 兼容 API（推荐）
-pip install funasr fastapi uvicorn python-multipart
-funasr-server --model sensevoice --device cuda
-# → POST /v1/audio/transcriptions，地址 localhost:8000
-# 离线长音频联合转写 + 匿名说话人标签：
-funasr-server --model moss-transcribe-diarize --device cuda:0
+python3.11 -m venv .venv-funasr-http
+. .venv-funasr-http/bin/activate
+python -m pip install torch torchaudio
+python -m pip install funasr fastapi uvicorn python-multipart
+python -m pip check
+funasr-server --host 127.0.0.1 --port 8000 --model sensevoice --device cpu
 ```
 
-[MOSS 服务、Docker、Kubernetes、vLLM、SGLang、LocalAI 与 FunClip 部署指南 →](./docs/moss_transcribe_diarize_zh.md)
-
-使用公开样例音频验证服务：
+等待模型下载和服务启动。在第二个终端进入同一目录，使用 curl 7.76+ 下载并转写
+公开的中文样例音频。请求使用已预加载的模型，不保证固定文本或说话人标签。
 
 ```bash
-curl -L https://isv-data.oss-cn-hangzhou.aliyuncs.com/ics/MaaS/ASR/test_audio/BAC009S0764W0121.wav -o sample.wav
-curl http://localhost:8000/v1/audio/transcriptions \
+curl --fail --location https://isv-data.oss-cn-hangzhou.aliyuncs.com/ics/MaaS/ASR/test_audio/BAC009S0764W0121.wav -o sample.wav && \
+curl --fail-with-body http://127.0.0.1:8000/v1/audio/transcriptions \
   -F file=@sample.wav \
   -F model=sensevoice \
   -F response_format=verbose_json
 ```
+
+需要离线联合 ASR 与匿名说话人标签（`moss-transcribe-diarize`）时，请按
+[MOSS 服务、Docker、Kubernetes、vLLM、SGLang、LocalAI 与 FunClip 部署指南 →](./docs/moss_transcribe_diarize_zh.md)
+准备独立环境。这是替代服务，不是在上述 CPU 环境中再执行一条命令；复用 8000
+端口前先停止 CPU 服务。Nano GPU 服务请遵循[固定版本的分离引擎指南](./docs/vllm_guide_zh.md)，
+并检查实际后端加载日志，不能仅凭模型选择就认定已启用 vLLM。
 
 ```bash
 # Docker 流式服务
