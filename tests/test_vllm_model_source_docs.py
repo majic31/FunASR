@@ -7,7 +7,6 @@ ROOT = Path(__file__).resolve().parents[1]
 VLLM_GUIDES = [
     "docs/vllm_guide.md",
     "docs/vllm_guide_zh.md",
-    "docs/vllm_guide_zh_v2.md",
 ]
 
 
@@ -31,20 +30,20 @@ def test_vllm_guides_distinguish_official_and_native_model_paths(relpath):
         assert marker in text, f"{relpath} is missing {marker}"
 
 
-def test_v2_guide_keeps_native_vllm_and_funasr_realtime_paths_separate():
-    text = (ROOT / "docs/vllm_guide_zh_v2.md").read_text(encoding="utf-8")
+def test_primary_guide_keeps_native_vllm_and_funasr_realtime_paths_separate():
+    text = (ROOT / "docs/vllm_guide_zh.md").read_text(encoding="utf-8")
 
     required_markers = [
         "FunAudioLLM/Fun-ASR-Nano-2512-vllm",
-        "vllm serve FunAudioLLM/Fun-ASR-Nano-2512-vllm --port 8000",
+        "vllm_official_native_validation_zh.md",
         "serve_realtime_ws.py",
-        "realtime speech-to-text",
-        "没有可用的实时转写会话",
+        "VAD、partial",
+        "不会注册 `/v1/realtime`",
         "不是稳定的 API 契约",
     ]
 
     for marker in required_markers:
-        assert marker in text, f"docs/vllm_guide_zh_v2.md is missing {marker}"
+        assert marker in text, f"docs/vllm_guide_zh.md is missing {marker}"
 
 
 @pytest.mark.parametrize(
