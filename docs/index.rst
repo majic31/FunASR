@@ -44,6 +44,8 @@ entry to these guides. Source Markdown remains in this repository.
    streaming_vad_zh
    keyword_spotting
    keyword_spotting_zh
+   speaker_emotion
+   speaker_emotion_zh
    deployment_matrix
    deployment_matrix_zh
    ./moss_transcribe_diarize.md

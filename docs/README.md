@@ -30,6 +30,7 @@
 | Compare CPU, GPU, realtime and API runtimes | [Deployment matrix](deployment_matrix.md) / [中文](deployment_matrix_zh.md) |
 | Handle streaming speech boundaries and finalization | [Streaming VAD](streaming_vad.md) / [中文](streaming_vad_zh.md) |
 | Detect keywords and manage utterance-end KWS results | [Keyword spotting](keyword_spotting.md) / [中文](keyword_spotting_zh.md) |
+| Distinguish speaker vectors, anonymous labels and emotion tags | [Speakers and emotion tags](speaker_emotion.md) / [中文](speaker_emotion_zh.md) |
 | Transcribe and diarize with third-party MOSS | [MOSS](moss_transcribe_diarize.md) / [中文](moss_transcribe_diarize_zh.md) |
 | Accelerate with the FunASR vLLM split engine | [vLLM](vllm_guide.md) / [中文](vllm_guide_zh.md) |
 | Evaluate native vLLM serving | [Validation record](vllm_native_funasr_validation.md) |
