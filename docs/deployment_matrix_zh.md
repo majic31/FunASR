@@ -10,7 +10,7 @@
 | Python API | Notebook、离线任务、首次模型评测 | [README 快速开始](../README_zh.md#快速开始) | 最简单；调用方自己负责批处理、重试和文件管理。 |
 | OpenAI 兼容 API | 私有语音 API、Agent、Dify/LangChain/AutoGen 风格客户端 | [OpenAI API 示例](../examples/openai_api/README_zh.md) | 已支持 OpenAI audio API 的应用最容易接入。 |
 | Xinference | 已经使用 Xinference 统一管理模型服务的团队 | [Xinference 仓库](https://github.com/xorbitsai/inference) | 使用包含 [xorbitsai/inference#5140](https://github.com/xorbitsai/inference/pull/5140) 的版本或 commit，确保 Fun-ASR-Nano 使用打包发布的 `funasr~=1.3.0`，而不是旧的 git commit pin。 |
-| Docker Compose API | 可复现本地 smoke test 或小型内部服务 | [OpenAI API Docker 文档](../examples/openai_api/README_zh.md) | 默认 CPU；容器里使用 CUDA 前需要先适配 CUDA-capable 镜像。 |
+| Docker Compose API | 本地 smoke test 或小型内部服务 | [OpenAI API Docker 文档](../examples/openai_api/README_zh.md) | 默认 CPU；容器里使用 CUDA 前需要先适配 CUDA-capable 镜像。 |
 | Kubernetes API | 集群内私有语音 API | [Kubernetes 模板](../examples/openai_api/kubernetes/README_zh.md) | 默认私有 `ClusterIP`；对外开放前补齐鉴权、TLS、网络策略和 GPU 调度。 |
 | Runtime WebSocket 服务 | 实时字幕、会议、客服流式音频 | [Runtime 服务文档](../runtime/readme_cn.md) | 需要中间结果、断句或长连接音频流时选择。 |
 | ONNX/C++ Runtime | 高并发 CPU 服务或嵌入式实时 ASR | [ONNX Runtime 文档](../runtime/onnxruntime/readme.md) | 如果延迟和并发已经验证，不要轻易替换；固定业务词优先做文本后处理。 |
@@ -37,15 +37,22 @@
 
 ### 我想要可复现的容器 demo
 
-使用 `examples/openai_api/docker-compose.yml` 跑 CPU smoke test：
+在 **FunASR 仓库根目录**，准备好 Docker Engine 和 Docker Compose 插件后，启动本地 SenseVoice CPU 服务。这条命令不会覆盖已有 `.env`，显式设置会在本次启动中覆盖环境里遗留的端口、设备和模型值。主机端口仅绑定 loopback，不是鉴权网关；共享前先阅读[安全与网关指南](../examples/openai_api/SECURITY_zh.md)。
 
 ```bash
-cd examples/openai_api
-cp .env.example .env
-docker compose up --build
+FUNASR_HOST_PORT=127.0.0.1:8000 FUNASR_DEVICE=cpu FUNASR_MODEL=sensevoice \
+  docker compose -f examples/openai_api/docker-compose.yml up --build
 ```
 
-在没有 CUDA-capable PyTorch/FunASR 镜像前保持 CPU 模式。准备好 CUDA 镜像后，再设置 `FUNASR_DEVICE=cuda` 并用同一个 smoke test 验证。没有 bash/curl 时可运行 `python examples/openai_api/smoke_test.py --base-url http://localhost:8000`。
+保持该终端中的 Compose 运行。打开**第二个终端，仍位于同一仓库根目录**，使用 Python 3.10 或更高版本运行；smoke 客户端仅依赖标准库，不需要在主机安装 FunASR：
+
+```bash
+python3 examples/openai_api/smoke_test.py --base-url http://127.0.0.1:8000 --model sensevoice --response-format verbose_json
+```
+
+客户端仅在当前目录不存在 `sample.wav` 时下载公开中文样本，已有文件会被复用。它打印 health、模型 metadata 和转写 JSON；请自行检查文本，退出码成功不代表识别质量或并发验收。客户端不发送 Authorization，安全指南的仅转写网关会拒绝该 smoke 使用的 metadata 路由。请通过本地端点运行，避免保留敏感音频和未脱敏输出。
+
+CPU 镜像复制 example 服务，但从 PyPI 安装 FunASR，依赖环境未锁定。声称可复现前，请记录实际包版本和镜像 digest。单独修改 `FUNASR_DEVICE` 不会增加 CUDA 依赖或容器 GPU 访问能力；GPU 镜像与调度需要另外准备和验证，参见[完整 HTTP 部署指南](../examples/openai_api/README_zh.md#docker-部署)及所选模型的服务要求。
 
 ### 我想部署集群内服务
 

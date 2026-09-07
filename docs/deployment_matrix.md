@@ -10,7 +10,7 @@ Use this page to choose the shortest deployment path for a product, demo, benchm
 | Python API | Notebooks, offline jobs, first model evaluation | [README quick start](../README.md#quick-start) | Lowest ceremony; caller owns batching, retries, and files. |
 | OpenAI-compatible API | Private speech API, agents, Dify/LangChain/AutoGen-style clients | [OpenAI API example](../examples/openai_api/) | Easiest integration for apps that already support OpenAI audio APIs. |
 | Xinference | Teams that already operate Xinference model serving | [Xinference repository](https://github.com/xorbitsai/inference) | Use a Xinference version containing [xorbitsai/inference#5140](https://github.com/xorbitsai/inference/pull/5140) so Fun-ASR-Nano uses packaged `funasr~=1.3.0` instead of the old pinned git commit. |
-| Docker Compose API | Reproducible local smoke test or small internal service | [OpenAI API Docker docs](../examples/openai_api/#docker-deployment) | CPU by default; adapt the image before using CUDA in containers. |
+| Docker Compose API | Local smoke test or small internal service | [OpenAI API Docker docs](../examples/openai_api/#docker-deployment) | CPU by default; adapt the image before using CUDA in containers. |
 | Kubernetes API | Internal speech API for cluster services | [Kubernetes template](../examples/openai_api/kubernetes/) | Starts as private `ClusterIP`; add auth, TLS, network policy, and GPU scheduling before broader exposure. |
 | Runtime WebSocket service | Live captions, meetings, call-center streams | [Runtime service docs](../runtime/readme.md) | Use when partial results, endpointing, or long-lived audio streams matter. |
 | ONNX/C++ runtime | High-concurrency CPU services or embedded realtime ASR | [ONNX runtime docs](../runtime/onnxruntime/readme.md) | Keep this path when latency/concurrency is already proven; add text post-processing for fixed business terms before moving to GPU LLMs. |
@@ -43,15 +43,22 @@ OpenAI API example above instead.
 
 ### I want a repeatable container demo
 
-Use `examples/openai_api/docker-compose.yml` for a CPU-mode smoke test:
+From the **FunASR repository root**, with Docker Engine and the Docker Compose plugin available, start a local SenseVoice CPU service. This command does not overwrite an existing `.env`; its explicit settings override inherited port, device and model values for this launch. The host listener is loopback only, not an authentication gateway. Review the [security and gateway guide](../examples/openai_api/SECURITY.md) before sharing it.
 
 ```bash
-cd examples/openai_api
-cp .env.example .env
-docker compose up --build
+FUNASR_HOST_PORT=127.0.0.1:8000 FUNASR_DEVICE=cpu FUNASR_MODEL=sensevoice \
+  docker compose -f examples/openai_api/docker-compose.yml up --build
 ```
 
-Keep CPU mode until you have a CUDA-capable PyTorch/FunASR image. After that, set `FUNASR_DEVICE=cuda` and verify with the same smoke test. Use `python examples/openai_api/smoke_test.py --base-url http://localhost:8000` on systems without bash/curl.
+Keep Compose running in that terminal. Open a **second terminal at the same repository root** and use Python 3.10 or newer; this smoke client only needs the standard library, not a host FunASR installation:
+
+```bash
+python3 examples/openai_api/smoke_test.py --base-url http://127.0.0.1:8000 --model sensevoice --response-format verbose_json
+```
+
+The client downloads a public Chinese sample only if `sample.wav` is missing in the current directory; an existing file is reused. It prints health, model metadata and transcription JSON. Inspect the text yourself: a successful exit does not certify recognition quality or concurrency. The client sends no Authorization, and the security guide's transcription-only gateway denies the metadata routes used by this smoke test. Keep the request on the local endpoint and avoid retaining sensitive audio or unredacted output.
+
+This CPU image copies the example server but installs FunASR from PyPI. It is not a locked dependency environment; record the resolved package versions and image digest before making reproducibility claims. Changing `FUNASR_DEVICE` alone does not add CUDA dependencies or container GPU access. Prepare and validate a GPU image and scheduling separately; use the [complete HTTP deployment guide](../examples/openai_api/README.md#docker-deployment) and the selected model's serving requirements.
 
 ### I want an internal Kubernetes service
 

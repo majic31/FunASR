@@ -4,6 +4,7 @@ import argparse
 import ast
 import importlib.util
 import json
+import os
 from pathlib import Path
 import re
 import shlex
@@ -1095,6 +1096,75 @@ class KubernetesDocsContract(unittest.TestCase):
             text = path.read_text(encoding="utf-8")
             for marker in expected[path.name]:
                 self.assertIn(marker, text, path.name)
+
+
+MATRIX_DOCS = [ROOT / "docs" / ("deployment_matrix" + suffix + ".md")
+               for suffix in ("", "_zh", "_ja", "_ko")]
+
+
+class DeploymentMatrixDocsContract(unittest.TestCase):
+    def test_four_language_shell_recipes_match(self):
+        expected = shell_commands(MATRIX_DOCS[0].read_text(encoding="utf-8"))
+        for path in MATRIX_DOCS:
+            self.assertEqual(shell_commands(path.read_text(encoding="utf-8")), expected)
+
+    def test_compose_recipe_overrides_ambient_settings_in_real_shell(self):
+        expected = ["FUNASR_HOST_PORT=127.0.0.1:8000", "FUNASR_DEVICE=cpu", "FUNASR_MODEL=sensevoice",
+                    "docker", "compose", "-f", "examples/openai_api/docker-compose.yml", "up", "--build"]
+        with tempfile.TemporaryDirectory() as directory:
+            docker = Path(directory) / "docker"
+            docker.write_text('#!/bin/sh\nprintf "%s\\n" "$FUNASR_HOST_PORT" "$FUNASR_DEVICE" '
+                              '"$FUNASR_MODEL" "$PWD" "$@"\n', encoding="utf-8")
+            docker.chmod(0o700)
+            env = dict(os.environ, PATH=directory + os.pathsep + os.environ.get("PATH", ""),
+                       FUNASR_HOST_PORT="0.0.0.0:9999", FUNASR_DEVICE="cuda", FUNASR_MODEL="auto")
+            for path in MATRIX_DOCS:
+                code = next(code for code in blocks(path.read_text(encoding="utf-8"), "bash")
+                            if "docker compose" in code)
+                # Only the single reviewed launch is executed; the Docker binary is a capture fixture.
+                self.assertEqual(shell_commands("```bash\n" + code + "```\n"), [expected])
+                result = subprocess.run(["sh", "-c", code], cwd=ROOT, env=env,
+                                        capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout.splitlines(), ["127.0.0.1:8000", "cpu", "sensevoice",
+                                  str(ROOT), "compose", "-f", "examples/openai_api/docker-compose.yml",
+                                  "up", "--build"])
+        self.assertTrue((ROOT / expected[-3]).is_file())
+        self.assertTrue((ROOT / expected[-3]).with_name("Dockerfile").is_file())
+
+    def test_second_terminal_smoke_uses_root_path_and_explicit_model(self):
+        source = ROOT / "examples/openai_api/smoke_test.py"
+        options = {ast.literal_eval(arg) for node in ast.walk(tree(source))
+                   if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                   and node.func.attr == "add_argument" for arg in node.args
+                   if isinstance(arg, ast.Constant) and isinstance(arg.value, str)}
+        expected = ["python3", str(source.relative_to(ROOT)), "--base-url", "http://127.0.0.1:8000",
+                    "--model", "sensevoice", "--response-format", "verbose_json"]
+        for path in MATRIX_DOCS:
+            commands = shell_commands(path.read_text(encoding="utf-8"))
+            self.assertEqual(len(commands), 2)
+            self.assertEqual(commands[1], expected)
+            self.assertLessEqual({arg for arg in expected[2:] if arg.startswith("--")}, options)
+
+    def test_compose_guidance_explains_scope_and_preserves_owned_links(self):
+        markers = {
+            "deployment_matrix.md": ("repository root", "second terminal", "does not overwrite", "PyPI",
+                                     "not a locked", "Authorization", "Python 3.10", "sample.wav"),
+            "deployment_matrix_zh.md": ("仓库根目录", "第二个终端", "不会覆盖", "PyPI", "未锁定",
+                                        "Authorization", "Python 3.10", "sample.wav"),
+            "deployment_matrix_ja.md": ("リポジトリのルート", "別のターミナル", "上書きしません", "PyPI",
+                                        "固定されていません", "Authorization", "Python 3.10", "sample.wav"),
+            "deployment_matrix_ko.md": ("저장소 루트", "두 번째 터미널", "덮어쓰지 않습니다", "PyPI",
+                                        "고정되지", "Authorization", "Python 3.10", "sample.wav"),
+        }
+        for path in MATRIX_DOCS:
+            text = path.read_text(encoding="utf-8")
+            for marker in markers[path.name]:
+                self.assertIn(marker, text, path.name)
+            security = "SECURITY_zh.md" if path.stem.endswith("_zh") else "SECURITY.md"
+            self.assertIn(f"](../examples/openai_api/{security})", text)
+            self.assertTrue((EXAMPLE / security).is_file())
+            self.assertNotIn("cp .env.example .env", text)
 
 
 if __name__ == "__main__":
