@@ -51,6 +51,7 @@ interfaces. Choose the matching protocol before selecting a client.
 
 ## Evaluate and Operate
 
+- [Historical ASR benchmark](benchmark/historical_asr.md) / [中文](benchmark/historical_asr_zh.md): preserved results and provenance limits
 - [Performance methodology](benchmark/rtf_reproducibility.md) and [realtime WebSocket benchmarks](benchmark/realtime_ws_benchmark.md)
 - [Troubleshooting](troubleshooting.md) / [中文](troubleshooting_zh.md)
 - [Use cases](use_case_showcase.md), [community integrations](community_projects.md), and [repository responsibilities](repository_roles.md)

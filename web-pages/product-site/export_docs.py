@@ -18,6 +18,7 @@ ALIASES = {
     'vllm': 'vllm.html',
     'deployment-matrix': 'deployment-matrix.html',
     'agent-integration': 'agent.html',
+    'historical-asr-benchmark': 'benchmark.html',
 }
 
 

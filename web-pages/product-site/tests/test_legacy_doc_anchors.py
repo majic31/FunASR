@@ -21,6 +21,7 @@ OLD_IDS = {
     'deployment-matrix.html': 'matrix choices runtime-diagnostics checklist help',
     # Independently inventoried from public EN/ZH pages on 2026-09-07.
     'agent.html': 'server sdk workflows mcp voice subtitle',
+    'benchmark.html': 'summary table method choose',
 }
 PAGES = [prefix + name for name in OLD_IDS for prefix in ('', 'zh/')]
 
@@ -149,6 +150,15 @@ def test_insertion_is_idempotent_and_keeps_existing_anchors():
 def test_agent_legacy_fragments_keep_their_topics(page, targets):
     pages = json.loads((SITE / 'data/legacy_doc_anchors.json').read_text())['pages']
     assert pages[page] == dict(zip('server sdk workflows mcp voice subtitle'.split(), targets))
+
+
+@pytest.mark.parametrize('page,targets', [
+    ('benchmark.html', ['historical-summary', 'historical-results', 'provenance-and-limitations', 'choosing-a-current-path']),
+    ('zh/benchmark.html', ['历史概览', '历史结果', '来源与限制', '当前选型']),
+])
+def test_benchmark_legacy_fragments_keep_their_topics(page, targets):
+    pages = json.loads((SITE / 'data/legacy_doc_anchors.json').read_text())['pages']
+    assert pages[page] == dict(zip('summary table method choose'.split(), targets))
 
 
 @pytest.mark.parametrize('heading', ('<h2 id="different">Topic</h2>', '<p id="topic">Not a heading</p>'))

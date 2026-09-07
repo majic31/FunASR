@@ -1,6 +1,10 @@
 {
   "source_ref": "origin/gh-pages",
   "source_revision": "871ac766876c2f511550478d88c86aa3daab3172",
+  "additional_source_revisions": {
+    "benchmark.html": "67d63b80a246dc33749e43904c294e0409cd9183",
+    "zh/benchmark.html": "67d63b80a246dc33749e43904c294e0409cd9183"
+  },
   "notes": "Published fragments map to the nearest current topic heading. Consolidated quickstart topics use workflow sections; removed standalone runtime diagnostics use the deployment readiness checklist. Source articles and API reference pages are not rewritten by this compatibility layer.",
   "pages": {
     "tutorial.html": {
@@ -147,6 +151,18 @@
       "mcp": "mcp-server",
       "voice": "desktop-voice-input",
       "subtitle": "subtitle-generation"
+    },
+    "benchmark.html": {
+      "summary": "historical-summary",
+      "table": "historical-results",
+      "method": "provenance-and-limitations",
+      "choose": "choosing-a-current-path"
+    },
+    "zh/benchmark.html": {
+      "summary": "历史概览",
+      "table": "历史结果",
+      "method": "来源与限制",
+      "choose": "当前选型"
     },
     "zh/agent.html": {
       "server": "http-服务",

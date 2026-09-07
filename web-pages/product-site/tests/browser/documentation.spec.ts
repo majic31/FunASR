@@ -95,6 +95,46 @@ test('public speech sample is playable and waveform has actual pixels', async ({
 
 for (const prefix of ['', '/en']) {
   for (const width of [390, 1440]) {
+    test(`Historical ASR benchmark is discoverable and readable ${prefix || '/zh'} ${width}`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      const errors: string[] = [];
+      page.on('pageerror', error => errors.push(error.message));
+      await page.goto(`${prefix}/docs/`);
+      await page.locator('[data-doc-search] input').fill(prefix ? 'Historical ASR' : '历史 ASR');
+      const route = `${prefix}/docs/historical-asr-benchmark.html`;
+      await page.locator(`.search-results a[href="${route}"]`).click();
+      await expect(page).toHaveURL(new RegExp(`${route}$`));
+      await expect(page.locator('.docs-article h2')).toHaveCount(4);
+      await expect(page.locator('.docs-article table')).toHaveCount(3);
+      const results = page.locator('.docs-article table').nth(1);
+      await expect(results.locator('tr')).toHaveCount(10);
+      const notes = await results.locator('td:nth-child(6)').evaluateAll(nodes => nodes.map(node => ({
+        width: node.getBoundingClientRect().width,
+        rowHeight: node.parentElement!.getBoundingClientRect().height,
+      })));
+      expect(notes.every(note => note.width >= 260 && note.rowHeight < 240)).toBeTruthy();
+      const cell = results.locator('td').filter({ hasText: /^0\.005896$/ });
+      await cell.scrollIntoViewIfNeeded();
+      const numberHeight = await cell.evaluate(node => {
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        return range.getBoundingClientRect().height;
+      });
+      expect(numberHeight).toBeLessThan(32);
+      for (const table of await page.locator('.docs-article table').all()) {
+        await table.scrollIntoViewIfNeeded();
+        expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
+      }
+      const peer = `${prefix ? '' : '/en'}/docs/historical-asr-benchmark.html`;
+      await page.locator(`.docs-article a[href="${peer}"]`).click();
+      await expect(page).toHaveURL(new RegExp(`${peer}$`));
+      expect(errors).toEqual([]);
+    });
+  }
+}
+
+for (const prefix of ['', '/en']) {
+  for (const width of [390, 1440]) {
     test(`Agent integration is discoverable and readable ${prefix || '/zh'} ${width}`, async ({ page, context }) => {
       await context.grantPermissions(['clipboard-read', 'clipboard-write']);
       await page.setViewportSize({ width, height: 900 });

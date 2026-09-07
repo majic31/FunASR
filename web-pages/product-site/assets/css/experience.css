@@ -158,6 +158,8 @@ td, th { padding: 14px; }
 .docs-article pre code { background: none; color: inherit; white-space: pre; padding: 0; }
 .docs-article :not(pre) > code { padding: 2px 5px; border-radius: 4px; background: #f0f4f1; font-size: .88em; }
 .docs-article table { display: block; overflow-x: auto; max-width: 100%; width: 100%; overflow-wrap: normal; }
+.docs-article #historical-results ~ table td:nth-child(6),
+.docs-article #\5386\53f2\7ed3\679c ~ table td:nth-child(6) { min-width: 260px; }
 .docs-article blockquote { border-left: 3px solid #7ea98e; background: #f3f8f4; margin: 20px 0; padding: 8px 20px; color: #52655a; }
 .docs-toc { position: sticky; top: 104px; max-height: calc(100vh - 130px); overflow-y: auto; border-left: 1px solid var(--line); padding-left: 18px; font-size: 12px; }
 .docs-toc strong { color: var(--ink); }
