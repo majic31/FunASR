@@ -113,7 +113,7 @@ model = AutoModelVLLM(model="FunAudioLLM/Fun-ASR-Nano-2512", tensor_parallel_siz
 results = model.generate(["audio1.wav", "audio2.wav"], language="auto")
 ```
 
-> **Deploy as API server:** `funasr-server --device cuda` → OpenAI-compatible endpoint at localhost:8000
+> **Deploy as API server:** [Local SenseVoice CPU recipe](#deploy) · [Nano GPU serving and pinned vLLM setup](./docs/vllm_guide.md)
 >
 > **Use with AI agents:** [MCP Server](examples/mcp_server/) for Claude/Cursor · [OpenAI API](examples/openai_api/) for LangChain/Dify/AutoGen
 >
@@ -253,27 +253,38 @@ Available models: `sensevoice` (default), `paraformer`, `paraformer-en`, `fun-as
 
 ## Deploy
 
+Start a local SenseVoice CPU service from a fresh directory in a POSIX shell with
+Python 3.11. This installs the PyPI release into a separate environment, not this
+source checkout. Keep the unauthenticated service on loopback; use the
+[security guide](./examples/openai_api/SECURITY.md) before exposing it to other clients.
+
 ```bash
-# OpenAI-compatible API (recommended)
-pip install torch torchaudio
-pip install funasr vllm fastapi uvicorn python-multipart
-funasr-server --device cuda
-# → POST /v1/audio/transcriptions at localhost:8000
-# Joint long-form ASR + anonymous speaker labels (offline HTTP):
-funasr-server --model moss-transcribe-diarize --device cuda:0
+python3.11 -m venv .venv-funasr-http
+. .venv-funasr-http/bin/activate
+python -m pip install torch torchaudio
+python -m pip install funasr fastapi uvicorn python-multipart
+python -m pip check
+funasr-server --host 127.0.0.1 --port 8000 --model sensevoice --device cpu
 ```
 
-[MOSS service, Docker, Kubernetes, vLLM, SGLang, LocalAI, and FunClip guide →](./docs/moss_transcribe_diarize.md)
-
-Verify it with a public sample:
+Wait for model download and server startup. In a second terminal, use the same
+directory and curl 7.76+ to download a public Chinese audio sample and transcribe it.
+The request uses the preloaded model; no fixed transcript or speaker labels are promised.
 
 ```bash
-curl -L https://isv-data.oss-cn-hangzhou.aliyuncs.com/ics/MaaS/ASR/test_audio/BAC009S0764W0121.wav -o sample.wav
-curl http://localhost:8000/v1/audio/transcriptions \
+curl --fail --location https://isv-data.oss-cn-hangzhou.aliyuncs.com/ics/MaaS/ASR/test_audio/BAC009S0764W0121.wav -o sample.wav && \
+curl --fail-with-body http://127.0.0.1:8000/v1/audio/transcriptions \
   -F file=@sample.wav \
   -F model=sensevoice \
   -F response_format=verbose_json
 ```
+
+For offline joint ASR and anonymous speaker labels (`moss-transcribe-diarize`), prepare the separate environment
+in the [MOSS service, Docker, Kubernetes, vLLM, SGLang, LocalAI, and FunClip guide →](./docs/moss_transcribe_diarize.md).
+It is an alternative service, not another command in the CPU environment. Stop the
+CPU service before reusing port 8000. For Nano GPU serving, follow the
+[pinned split-engine guide](./docs/vllm_guide.md) and inspect the actual backend logs;
+selecting a model does not by itself prove that vLLM was loaded.
 
 ```bash
 # Docker streaming service

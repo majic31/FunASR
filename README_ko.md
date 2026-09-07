@@ -61,7 +61,7 @@ CAM++는 `spk_embedding` 벡터를 추출하고, `AutoModel`이 클러스터링�
 
 처음 사용한다면 [Colab 빠른 시작](./examples/colab/README_ko.md)으로 먼저 확인할 수 있습니다. 어떤 모델을 선택할지 고민된다면 [모델 선택 가이드](./docs/model_selection_ko.md)를 참고하세요.
 
-> **API 서버로 배포:** `funasr-server --device cuda` → localhost:8000에서 OpenAI 호환 엔드포인트
+> **API 서버로 배포:** [로컬 SenseVoice CPU 절차](#배포) · [Nano GPU 서빙과 고정 버전 vLLM 환경](./docs/vllm_guide.md)
 >
 > **AI Agent 연동:** [MCP 서버](examples/mcp_server/) Claude/Cursor 지원 · [OpenAI API](examples/openai_api/) LangChain/Dify/AutoGen 지원
 
@@ -144,18 +144,43 @@ FunASR는 어댑터를 제공합니다. 통합 경로는 오프라인이고 익�
 
 ## 배포
 
-```bash
-# OpenAI 호환 API (권장)
-pip install funasr fastapi uvicorn python-multipart
-funasr-server --device cuda
-# 오프라인 장시간 ASR + 익명 speaker label:
-funasr-server --model moss-transcribe-diarize --device cuda:0
+새 디렉터리에서 POSIX shell과 Python 3.11로 로컬 SenseVoice CPU 서비스를 시작합니다.
+현재 소스 checkout이 아니라 PyPI 릴리스를 별도 환경에 설치합니다. 인증을 내장하지
+않으므로 loopback에서만 수신하고, 다른 클라이언트에 공개하기 전에
+[보안 가이드](./examples/openai_api/SECURITY.md)를 확인하세요.
 
+```bash
+python3.11 -m venv .venv-funasr-http
+. .venv-funasr-http/bin/activate
+python -m pip install torch torchaudio
+python -m pip install funasr fastapi uvicorn python-multipart
+python -m pip check
+funasr-server --host 127.0.0.1 --port 8000 --model sensevoice --device cpu
+```
+
+모델 다운로드와 서버 시작을 기다리세요. 두 번째 터미널에서 같은 디렉터리로 이동한 뒤
+curl 7.76+로 공개 중국어 샘플을 내려받아 전사합니다. 요청은 미리 로드한 모델과
+일치하며, 고정된 텍스트나 화자 라벨을 보장하지 않습니다.
+
+```bash
+curl --fail --location https://isv-data.oss-cn-hangzhou.aliyuncs.com/ics/MaaS/ASR/test_audio/BAC009S0764W0121.wav -o sample.wav && \
+curl --fail-with-body http://127.0.0.1:8000/v1/audio/transcriptions \
+  -F file=@sample.wav \
+  -F model=sensevoice \
+  -F response_format=verbose_json
+```
+
+오프라인 ASR과 익명 화자 라벨을 함께 생성하려면 (`moss-transcribe-diarize`)
+[MOSS service / Docker / Kubernetes / vLLM / SGLang / LocalAI / FunClip guide →](./docs/moss_transcribe_diarize.md)의
+별도 환경을 준비하세요. 위 CPU 환경에서 이어서 실행하는 명령이 아니라 대체 서비스입니다.
+8000 포트를 다시 쓰기 전에 CPU 서비스를 중지하세요. Nano GPU 서빙은
+[고정 버전 분리 엔진 가이드](./docs/vllm_guide.md)를 따르고 실제 backend 로그를 확인하세요.
+모델 선택만으로 vLLM이 로드되었다고 판단할 수는 없습니다.
+
+```bash
 # Docker 스트리밍 서비스
 docker pull registry.cn-hangzhou.aliyuncs.com/funasr_repo/funasr:funasr-runtime-sdk-online-cpu-0.1.12
 ```
-
-[MOSS service / Docker / Kubernetes / vLLM / SGLang / LocalAI / FunClip guide →](./docs/moss_transcribe_diarize.md)
 
 CPU/엣지에서 Python 없이 오프라인 ASR만 필요하다면 llama.cpp / GGUF 런타임을 사용할 수 있습니다: [funasr.com/deploy/llama-cpp](https://www.funasr.com/en/deploy/llama-cpp.html) · [Fun-ASR-Nano-GGUF](https://huggingface.co/FunAudioLLM/Fun-ASR-Nano-GGUF) · [SenseVoiceSmall-GGUF](https://huggingface.co/FunAudioLLM/SenseVoiceSmall-GGUF).
 
