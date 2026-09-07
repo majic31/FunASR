@@ -17,6 +17,7 @@ ALIASES = {
     'moss-transcribe-diarize': 'moss-transcribe-diarize.html',
     'vllm': 'vllm.html',
     'deployment-matrix': 'deployment-matrix.html',
+    'agent-integration': 'agent.html',
 }
 
 

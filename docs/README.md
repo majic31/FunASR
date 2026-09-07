@@ -44,6 +44,7 @@
 Python SDK, Python HTTP, native vLLM HTTP and C++ WebSocket are different
 interfaces. Choose the matching protocol before selecting a client.
 
+- [Agent integration](agent_integration.md) / [中文](agent_integration_zh.md): HTTP, MCP, desktop recording and local subtitles
 - [HTTP schema](../examples/openai_api/OPENAPI.md), [JavaScript](../examples/openai_api/JAVASCRIPT.md), [workflow integration](../examples/openai_api/WORKFLOWS.md)
 - [C++ WebSocket protocol](../runtime/docs/websocket_protocol.md) and [ONNX binary output](../runtime/docs/onnxruntime_binary_output.md)
 - [HTTP security](../examples/openai_api/SECURITY.md) and [Kubernetes manifests](../examples/openai_api/kubernetes/README.md)

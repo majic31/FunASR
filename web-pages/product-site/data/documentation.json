@@ -34,6 +34,7 @@
     {"slug": "security", "group": "operate", "zh": "服务安全边界", "en": "Service security boundaries", "source_zh": "examples/openai_api/SECURITY_zh.md", "source_en": "examples/openai_api/SECURITY.md"},
     {"slug": "benchmark-method", "group": "operate", "zh": "可复现性能评测", "en": "Reproducible performance tests", "source_zh": "docs/benchmark/rtf_reproducibility.md", "source_en": "docs/benchmark/rtf_reproducibility.md"},
     {"slug": "realtime-benchmark", "group": "operate", "zh": "实时 WebSocket 压测", "en": "Realtime WebSocket benchmarking", "source_zh": "docs/benchmark/realtime_ws_benchmark.md", "source_en": "docs/benchmark/realtime_ws_benchmark.md"},
+    {"slug": "agent-integration", "group": "ecosystem", "zh": "Agent 集成", "en": "Agent integration", "source_zh": "docs/agent_integration_zh.md", "source_en": "docs/agent_integration.md"},
     {"slug": "use-cases", "group": "ecosystem", "zh": "应用场景与示例", "en": "Use cases & examples", "source_zh": "docs/use_case_showcase_zh.md", "source_en": "docs/use_case_showcase.md"},
     {"slug": "community", "group": "ecosystem", "zh": "社区集成", "en": "Community integrations", "source_zh": "docs/community_projects_zh.md", "source_en": "docs/community_projects.md"},
     {"slug": "repositories", "group": "ecosystem", "zh": "四仓职责与贡献入口", "en": "Repositories & contribution paths", "source_zh": "docs/repository_roles_zh.md", "source_en": "docs/repository_roles.md"},
