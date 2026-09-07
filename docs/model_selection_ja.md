@@ -18,7 +18,9 @@ model = AutoModel(
 result = model.generate(input="meeting.wav")
 ```
 
-デモ、プライベート API、多言語文字起こし、話者付き会議録、Agent 音声入力の最初の選択肢として使いやすいモデルです。中国語本番精度、ストリーミング遅延、LLM-based ASR 評価など明確な要件が出たときだけ切り替えてください。
+デモ、プライベート API、多言語文字起こし、Agent 音声入力の評価をここから始められます。上の会議録の例では、SenseVoice の ASR・感情/イベントタグとは別に、`fsmn-vad` で音声区間を検出し、`cam++` の話者埋め込みをクラスタリングします。話者ラベルは録音内の匿名番号で、登録済み人物の識別や録音間で固定された ID ではありません。対象言語と実際の音声でモデルを比較してください。
+
+**Fun-ASR-Nano-2512** は中国語・英語・日本語と中国語方言/地域アクセントの評価候補です。**Fun-ASR-MLT-Nano** は別の checkpoint です。必要な言語の対応を各モデルカードで確認し、Nano の対応範囲と混同しないでください。
 
 ## 判断表
 
@@ -36,12 +38,15 @@ result = model.generate(input="meeting.wav")
 
 `examples/openai_api` server は短い alias を提供します。アプリケーション側はモデル repository ID を知らなくても利用できます。
 
-| Alias | 中身 | 使う場面 |
-|---|---|---|
-| `sensevoice` | `iic/SenseVoiceSmall` | 多言語 ASR、イベントタグ、CPU/GPU 両対応の標準プライベート音声 API。 |
-| `paraformer` | `paraformer-zh` + VAD + punctuation | 中国語中心の本番ルート。 |
-| `paraformer-en` | `paraformer-en` + VAD | OpenAI-style client の英語互換性チェック。 |
-| `fun-asr-nano` | `FunAudioLLM/Fun-ASR-Nano-2512` | LLM-based ASR の中英日・中国語方言/地域アクセント評価、または vLLM acceleration の確認。 |
+- **`sensevoice`**: `iic/SenseVoiceSmall` による CPU/GPU での多言語 HTTP 文字起こしです。返却テキストからリッチタグは除去されます。
+- **`paraformer`**: `paraformer-zh` に VAD と句読点復元を組み合わせた中国語向けの経路です。
+- **`paraformer-en`**: `paraformer-en` と VAD を使う、OpenAI-style client 向けの英語文字起こしです。
+- **`fun-asr-nano`**: `FunAudioLLM/Fun-ASR-Nano-2512` による中英日・中国語方言/地域アクセントの評価経路です。vLLM acceleration を試す場合は互換性のある runtime を選んでください。
+
+この HTTP サンプルはトップレベルの `text` と `verbose_json` の各 segment の
+`text` を整形するため、形式を変えても感情/イベントタグは復元されません。
+元のタグが必要なら Python SDK を使い、表示用の後処理より前に返却された `text`
+を保存してください。[元のタグを保存するレシピ（英語）](./speaker_emotion.md)を参照してください。
 
 接続前にサービスを確認します。
 

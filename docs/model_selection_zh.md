@@ -4,7 +4,7 @@
 
 ## 默认快速路径
 
-如果有 GPU，先从旗舰 **Fun-ASR-Nano** 开始 —— 基于 LLM 的识别模型（SenseVoice 编码器 + Qwen3 解码），覆盖中文、英文、日语，以及 7 种中文方言和 26 种地域口音，在难例、上下文和专名上精度最强：
+如果有 GPU，需要评估中文、英文、日语或中文方言和地域口音，可以先试旗舰 **Fun-ASR-Nano**（SenseVoice 编码器 + Qwen3 解码器）。确定生产模型前，请用自己的音频做对比：
 
 ```python
 from funasr import AutoModel
@@ -14,7 +14,7 @@ result = model.generate(input="meeting.wav")
 print(result[0]["text"])
 ```
 
-在 CPU 上，或当你想要多语种 + 情感/事件标签、带说话人信息的会议转写一次完成时，用 **SenseVoice-Small**：
+需要非自回归多语种 ASR、情感/事件标签，或先在 CPU 上评估时，可以从 **SenseVoice-Small** 开始。下面的会议转写示例另外组合了 VAD 和说话人处理阶段；说话人分离不是 SenseVoice 单次识别直接提供的能力：
 
 ```python
 from funasr import AutoModel
@@ -27,6 +27,9 @@ model = AutoModel(
 )
 result = model.generate(input="meeting.wav")
 ```
+
+SenseVoice 生成转写和富文本标签；`fsmn-vad` 定位语音，`cam++` 提取说话人向量，
+再由处理流水线聚类得到录音内的匿名编号。这些编号不识别已注册人物，也不是跨录音稳定的身份。
 
 当你的场景是纯中文、需要字级时间戳或热词时，切换到 Paraformer。
 
@@ -47,12 +50,14 @@ result = model.generate(input="meeting.wav")
 
 `examples/openai_api` 服务提供短别名，应用团队不需要了解具体模型仓库 ID：
 
-| Alias | 底层路径 | 适合场景 |
-|---|---|---|
-| `sensevoice` | `iic/SenseVoiceSmall` | 默认私有语音 API，多语种 ASR、事件标签和 CPU/GPU 行为较均衡。 |
-| `paraformer` | `paraformer-zh` + VAD + 标点 | 中文生产流量优先尝试。 |
-| `paraformer-en` | `paraformer-en` + VAD | OpenAI 风格客户端里的英文轻量路由。 |
-| `fun-asr-nano` | `FunAudioLLM/Fun-ASR-Nano-2512` | 评估 LLM-based ASR 的中文、英文、日语与中文方言/口音覆盖，或测试 vLLM 加速。 |
+- **`sensevoice`** 使用 `iic/SenseVoiceSmall`，用于 CPU/GPU 多语种 HTTP 转写；返回文本已移除富文本标签。
+- **`paraformer`** 使用 `paraformer-zh`，组合 VAD 和标点，适合评估中文转写。
+- **`paraformer-en`** 使用 `paraformer-en`，组合 VAD，提供 OpenAI 风格客户端的英文转写路径。
+- **`fun-asr-nano`** 使用 `FunAudioLLM/Fun-ASR-Nano-2512`，评估中文、英文、日语与中文方言/口音覆盖；测试 vLLM 加速时须选择兼容的运行路径。
+
+示例 HTTP 服务会清理顶层 `text` 和 `verbose_json` 中各分段的 `text`；
+切换到该格式不会恢复情感/事件标签。需要原始标签时，请使用 Python SDK，
+在展示后处理前保存返回的 `text`，参见[原始标签示例](./speaker_emotion_zh.md)。
 
 如果部署目标是昇腾 NPU，请把 `fun-asr-nano` 和 SenseVoice / Paraformer 分开看。Fun-ASR-Nano 的 PyTorch `AutoModel` 路径在修复 NPU autocast 后已有 310P3 社区兼容性 smoke 结果，但该测试明显慢于 CPU；`AutoModelVLLM` 仍依赖 vLLM-Ascend 算子支持，并已遇到 Qwen3 rotary / `TransData` 失败。生产部署优先使用 CUDA/vLLM、标准 PyTorch CPU/GPU 或 GGUF runtime，除非你正在主动验证 Ascend 后端。
 
