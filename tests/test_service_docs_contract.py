@@ -990,5 +990,112 @@ class GradioDocsContract(unittest.TestCase):
             self.assertIn("Python 3.12", section)
 
 
+KUBERNETES_DOCS = [EXAMPLE / "kubernetes" / name for name in ("README.md", "README_zh.md")]
+
+
+class KubernetesDocsContract(unittest.TestCase):
+    def test_bilingual_commands_match_and_parse(self):
+        self.assertEqual(*(shell_commands(path.read_text(encoding="utf-8")) for path in KUBERNETES_DOCS))
+        for path in KUBERNETES_DOCS:
+            for code in blocks(path.read_text(encoding="utf-8"), "bash"):
+                result = subprocess.run(["bash", "-n"], input=code, text=True, capture_output=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_builds_use_explicit_source_backed_contexts(self):
+        expected = {
+            "examples/openai_api/Dockerfile": ("examples/openai_api", "server.py", "cpu-latest"),
+            "examples/openai_api/Dockerfile.moss": (".", "pyproject.toml", "moss-local"),
+        }
+        for path in KUBERNETES_DOCS:
+            commands = shell_commands(path.read_text(encoding="utf-8"))
+            self.assertFalse(any(args[0] == "cd" for args in commands))
+            builds = [args[2:] for args in commands if args[:2] == ["docker", "build"]]
+            self.assertEqual(len(builds), 2)
+            seen = set()
+            parser = argparse.ArgumentParser(allow_abbrev=False)
+            parser.add_argument("-f", "--file", required=True)
+            parser.add_argument("-t", "--tag", required=True)
+            parser.add_argument("context")
+            for args in builds:
+                options = parser.parse_args(args)
+                context, source, tag = expected[options.file]
+                seen.add(options.file)
+                self.assertEqual(options.context, context)
+                self.assertTrue((ROOT / context / source).is_file())
+                self.assertTrue((ROOT / options.file).is_file())
+                dockerfile = (ROOT / options.file).read_text(encoding="utf-8")
+                copy_source = "." if source == "pyproject.toml" else source
+                self.assertRegex(dockerfile, rf"(?m)^COPY {re.escape(copy_source)} ")
+                self.assertTrue(options.tag.endswith(":" + tag))
+                self.assertIn(["docker", "push", options.tag], commands)
+            self.assertEqual(seen, set(expected))
+
+    def test_apply_paths_resolve_from_checkout_root(self):
+        for path in KUBERNETES_DOCS:
+            commands = shell_commands(path.read_text(encoding="utf-8"))
+            applies = [args for args in commands if args[:4] == ["kubectl", "-n", "speech", "apply"]]
+            self.assertEqual(applies, [
+                ["kubectl", "-n", "speech", "apply", "-k", "examples/openai_api/kubernetes"],
+                ["kubectl", "-n", "speech", "apply", "-f", "examples/openai_api/kubernetes/funasr-moss-api.yaml"],
+            ])
+            self.assertTrue((ROOT / applies[0][-1] / "kustomization.yaml").is_file())
+            self.assertTrue((ROOT / applies[1][-1]).is_file())
+            for deployment in ("funasr-api", "funasr-moss-api"):
+                self.assertIn(["kubectl", "-n", "speech", "rollout", "status", "deploy/" + deployment,
+                               "--timeout=15m"], commands)
+
+    def test_port_forward_and_smoke_match_each_service(self):
+        smoke_path = "examples/openai_api/smoke_test.py"
+        options = {ast.literal_eval(arg) for node in ast.walk(tree(ROOT / smoke_path))
+                   if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                   and node.func.attr == "add_argument" for arg in node.args
+                   if isinstance(arg, ast.Constant) and isinstance(arg.value, str)}
+        for path in KUBERNETES_DOCS:
+            commands = shell_commands(path.read_text(encoding="utf-8"))
+            smokes = [args for args in commands if args[0] == "python3"]
+            self.assertEqual(len(smokes), 2)
+            for args, service, model, port in zip(smokes, ("funasr-api", "funasr-moss-api"),
+                                                ("sensevoice", "moss-transcribe-diarize"), (8000, 8001)):
+                self.assertEqual(args[1], smoke_path)
+                self.assertLessEqual({arg for arg in args[2:] if arg.startswith("--")}, options)
+                self.assertEqual(args[args.index("--model") + 1], model)
+                self.assertEqual(args[args.index("--response-format") + 1], "verbose_json")
+                self.assertEqual(args[args.index("--base-url") + 1], f"http://127.0.0.1:{port}")
+                self.assertIn(["kubectl", "-n", "speech", "port-forward", "--address", "127.0.0.1",
+                               "svc/" + service, f"{port}:8000"], commands)
+
+    def test_guides_link_owned_security_and_model_contracts(self):
+        for path in KUBERNETES_DOCS:
+            text = path.read_text(encoding="utf-8")
+            suffix = "_zh" if path.stem.endswith("_zh") else ""
+            for link in (f"../SECURITY{suffix}.md", f"../../../docs/moss_transcribe_diarize{suffix}.md"):
+                self.assertIn(f"]({link})", text)
+            self.assertIn(f"](../SECURITY{suffix}.md)", text.split("```bash", 1)[0])
+            for link in re.findall(r"\[[^\]]+\]\(([^)]+)\)", text):
+                parts = urlsplit(link)
+                if parts.scheme or parts.netloc:
+                    continue
+                target = (path.parent / unquote(parts.path)).resolve()
+                self.assertIn(ROOT.resolve(), target.parents)
+                self.assertNotIn(".mcp-tasks", target.parts)
+                self.assertTrue(target.is_file(), link)
+                if parts.fragment:
+                    self.assertIn(unquote(parts.fragment), headings(target.read_text(encoding="utf-8")))
+
+    def test_operational_limits_are_explicit(self):
+        expected = {
+            "README.md": ("repository root", "ClusterIP is not authentication", "PyPI",
+                          "not an inference check", "does not send", "Python 3.10", "immutable digest",
+                          "not native vLLM", "speaker identity", "not included in", "kustomization.yaml"),
+            "README_zh.md": ("仓库根目录", "ClusterIP 不是鉴权", "PyPI", "不代表推理验收",
+                             "不发送", "Python 3.10", "不可变 digest", "不是原生 vLLM", "说话人身份",
+                             "不包含", "kustomization.yaml"),
+        }
+        for path in KUBERNETES_DOCS:
+            text = path.read_text(encoding="utf-8")
+            for marker in expected[path.name]:
+                self.assertIn(marker, text, path.name)
+
+
 if __name__ == "__main__":
     unittest.main()

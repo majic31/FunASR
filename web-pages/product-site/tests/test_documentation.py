@@ -52,6 +52,46 @@ def test_official_native_record_has_local_language_links_and_search(output):
         assert 'allendou/' not in commands
 
 
+@pytest.mark.parametrize('language, prefix, suffix, peer', [
+    ('zh', '', '_zh', '/en/docs/gradio.html'),
+    ('en', 'en/', '', '/docs/gradio.html'),
+])
+def test_gradio_uses_owned_sources_and_internal_discovery(output, language, prefix, suffix, peer):
+    route = '/' + prefix + 'docs/gradio.html'
+    path = output / route.lstrip('/')
+    assert path.is_file(), route
+    page = BeautifulSoup(path.read_text(), 'html.parser')
+    article = page.select_one('.docs-article')
+    assert len(article.select('h2')) == 5
+    assert page.select_one('[data-source-link]')['href'].endswith(f'/examples/openai_api/GRADIO{suffix}.md')
+    assert page.select_one(f'a[href="{peer}"]')
+    assert page.select_one(f'.docs-sidebar a[href="{route}"]')
+    for slug in ('http-server', 'security', 'moss-transcribe-diarize', 'model-selection'):
+        links = [a['href'] for a in article.select('a[href]')]
+        assert any(urlsplit(link).path == '/' + prefix + f'docs/{slug}.html' for link in links)
+    http = BeautifulSoup((output / prefix / 'docs/http-server.html').read_text(), 'html.parser')
+    assert http.select_one(f'.docs-article a[href="{route}"]')
+    index = BeautifulSoup((output / prefix / 'docs/index.html').read_text(), 'html.parser')
+    assert index.select_one(f'a[href="{route}"]')
+    search = json.loads((output / f'search-{language}.json').read_text())
+    assert any(row['url'] == route and 'Gradio' in row['title'] for row in search)
+    for marker in ('127.0.0.1', 'Python 3.12', 'gradio==6.26.0', 'moss-transcribe-diarize',
+                   'sglang-omni', 'verbose_json', 'diarized_json', 'Authorization', 'allowlist'):
+        assert marker in article.get_text(), (language, marker)
+
+
+@pytest.mark.parametrize('prefix', ['', 'en/'])
+def test_kubernetes_generated_commands_preserve_root_context_and_internal_security(output, prefix):
+    page = BeautifulSoup((output / prefix / 'docs/kubernetes.html').read_text(), 'html.parser')
+    article = page.select_one('.docs-article')
+    commands = '\n'.join(node.get_text() for node in article.select('pre code'))
+    assert 'apply -k examples/openai_api/kubernetes' in commands
+    assert 'apply -k .' not in commands
+    assert '-f examples/openai_api/Dockerfile.moss' in commands
+    assert '--model moss-transcribe-diarize --response-format verbose_json' in commands
+    assert article.select_one(f'a[href="/{prefix}docs/security.html"]')
+
+
 def test_deployment_limitations_use_short_heading_and_preserve_full_body(output):
     entries = json.loads((SITE_ROOT / 'data/deployments.json').read_text())['deployments']
     for language in ('zh', 'en'):
