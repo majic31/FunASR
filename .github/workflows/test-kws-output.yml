@@ -1,0 +1,44 @@
+name: Validate KWS output handling
+
+on:
+  pull_request:
+    paths:
+      - "funasr/models/fsmn_kws/**"
+      - "funasr/models/fsmn_kws_mt/**"
+      - "funasr/models/sanm_kws/**"
+      - "funasr/models/sanm_kws_streaming/**"
+      - "funasr/utils/datadir_writer.py"
+      - "funasr/utils/kws_utils.py"
+      - "tests/test_kws_optional_output.py"
+      - ".github/workflows/test-kws-output.yml"
+  push:
+    branches: [main]
+    paths:
+      - "funasr/models/fsmn_kws/**"
+      - "funasr/models/fsmn_kws_mt/**"
+      - "funasr/models/sanm_kws/**"
+      - "funasr/models/sanm_kws_streaming/**"
+      - "funasr/utils/datadir_writer.py"
+      - "funasr/utils/kws_utils.py"
+      - "tests/test_kws_optional_output.py"
+      - ".github/workflows/test-kws-output.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  kws-output:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install CPU test dependencies
+        run: |
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install "numpy<2" "kaldiio>=2.17.0" librosa "rapidfuzz>=3.0.0" six
+      - name: Check KWS results and optional file output without model weights
+        run: python -m unittest discover -s tests -p test_kws_optional_output.py -v
