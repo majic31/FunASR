@@ -60,6 +60,8 @@ entry to these guides. Source Markdown remains in this repository.
    :maxdepth: 1
    :caption: Evaluate and Operate
 
+   benchmark/historical_asr
+   benchmark/historical_asr_zh
    benchmark/rtf_reproducibility
    benchmark/realtime_ws_benchmark
    troubleshooting

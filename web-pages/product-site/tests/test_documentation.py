@@ -209,3 +209,58 @@ def test_agent_recipes_are_bilingual_and_use_existing_script_options():
                                 'examples/voice_input/funasr_input.py',
                                 'examples/subtitle/generate_subtitle.py'}
     assert recipes[0] == recipes[1]
+
+
+@pytest.mark.parametrize('language,prefix,suffix', [('en', 'en/', ''), ('zh', '', '_zh')])
+def test_historical_benchmark_preserves_frozen_tables_and_discovery(output, language, prefix, suffix):
+    frozen = json.loads((SITE_ROOT / 'tests/fixtures/historical_asr_tables.json').read_text())
+    record = next(item for item in frozen['pages'] if item['language'] == language)
+    route = '/' + prefix + 'docs/historical-asr-benchmark.html'
+    path = output / route.lstrip('/')
+    assert path.is_file(), route
+    page = BeautifulSoup(path.read_text(), 'html.parser')
+    article = page.select_one('.docs-article')
+    tables = article.select('table')
+    assert len(tables) == 3
+    assert len(article.select('h2')) == 4
+    for table, expected in zip(tables, record['tables']):
+        actual = [[' '.join(cell.get_text().split()) for cell in row.select('th,td')]
+                  for row in table.select('tr')]
+        assert actual == [[cell['text'] for cell in row] for row in expected['rows']]
+    assert page.select_one('[data-source-link]')['href'].endswith(
+        f'/docs/benchmark/historical_asr{suffix}.md')
+    links = {link['href'] for link in article.select('a[href]')}
+    for slug in ('agent-integration', 'vllm', 'model-selection', 'benchmark-method', 'realtime-benchmark'):
+        assert '/' + prefix + 'docs/' + slug + '.html' in links
+    assert ('/docs/' if prefix else '/en/docs/') + 'historical-asr-benchmark.html' in links
+    assert 'https://github.com/QwenAudio/Fun-ASR/issues/106' in links
+    assert 'https://huggingface.co/FunAudioLLM/Fun-ASR-MLT-Nano-2512' in links
+    original_path = urlsplit(record['requested_url']).path.removeprefix('/FunASR/')
+    assert f"https://github.com/modelscope/FunASR/blob/{frozen['source_commit']}/{original_path}" in links
+    index = BeautifulSoup((output / prefix / 'docs/index.html').read_text(), 'html.parser')
+    assert index.select_one(f'a[href="{route}"]')
+    search = json.loads((output / f'search-{language}.json').read_text())
+    assert any(row['url'] == route for row in search)
+
+
+@pytest.mark.parametrize('suffix', ['', '_zh'])
+def test_historical_benchmark_does_not_advertise_missing_scripts_as_runnable(suffix):
+    root = SITE_ROOT.parents[1]
+    source_path = root / f'docs/benchmark/historical_asr{suffix}.md'
+    assert source_path.is_file()
+    source = source_path.read_text()
+    blocks = re.findall(r'^```(\w+)\n(.*?)^```', source, re.M | re.S)
+    assert len(blocks) == 2 and all(language == 'text' for language, _ in blocks)
+    commands = [line for _, block in blocks for line in block.splitlines() if line.startswith('python ')]
+    assert commands == ['python benchmark/run_full_benchmark.py',
+                        'python benchmark/run_remaining.py',
+                        'python benchmark/fix_sensevoice_cer.py']
+    for command in commands:
+        assert not (root / command.split()[1]).exists()
+    for marker in ('11,539', '11,541', '169.6x', '211.8x', 'RTFx', '2026-09-07'):
+        assert marker in source
+    for marker in (('来源不完整', '不是测量日期', '不能直接执行', '不计算 CER/WER') if suffix
+                   else ('incomplete provenance', 'not the measurement date', 'cannot be run directly', 'does not compute CER/WER')):
+        assert marker in source
+    if not suffix:
+        assert 'Reproduce the 184-file long-audio benchmark' not in (root / 'docs/use_case_showcase.md').read_text()
