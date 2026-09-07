@@ -4,6 +4,8 @@ Run with Sphinx and the extensions listed in docs/conf.py installed.
 """
 
 import os
+import hashlib
+import json
 from pathlib import Path
 import shutil
 import subprocess
@@ -14,6 +16,40 @@ import pytest
 
 pytest.importorskip('sphinx')
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_vllm_compatibility_pages_preserve_rendered_section_targets(tmp_path):
+    docs = tmp_path / 'docs'
+    docs.mkdir()
+    shutil.copy2(ROOT / 'docs/conf.py', docs / 'conf.py')
+    shutil.copytree(ROOT / 'docs/_ext', docs / '_ext')
+    names = ('vllm_guide_zh', 'vllm_guide_zh_v2')
+    (docs / 'index.rst').write_text(
+        'Guides\n======\n\n.. toctree::\n\n   vllm_guide_zh\n   vllm_guide_zh_v2\n')
+    for name in names:
+        shutil.copy2(ROOT / 'docs' / (name + '.md'), docs / (name + '.md'))
+    output = tmp_path / 'html'
+    result = subprocess.run(
+        [sys.executable, '-m', 'sphinx', '-b', 'html', str(docs), str(output)],
+        text=True, capture_output=True, timeout=90)
+    assert result.returncode == 0, result.stdout + result.stderr
+    for name in names:
+        soup = BeautifulSoup((output / (name + '.html')).read_text(), 'html.parser')
+        article = soup.select_one('[role=main]')
+        pairs = []
+        for section in article.select('section[id],div.section[id]'):
+            heading = section.find(['h1', 'h2', 'h3', 'h4', 'h5', 'h6'], recursive=False)
+            ids = [section['id']] + [
+                node['id'] for node in section.find_all(id=True, recursive=False)
+                if node.name == 'span']
+            pairs.append([ids, heading.get_text() if heading else None])
+        # Published pre-consolidation Sphinx output: 40 heading/target pairs,
+        # including numeric ids and the duplicate Chinese heading alias.
+        assert len(pairs) == 40
+        digest = hashlib.sha256(json.dumps(pairs, ensure_ascii=False).encode()).hexdigest()
+        assert digest == 'fe2775e9be07ba6a8bc7cb899a41fe7441ca9d1710ec7b7aee425dfff26a095e', name
+    mirror = BeautifulSoup((output / 'vllm_guide_zh_v2.html').read_text(), 'html.parser')
+    assert mirror.select_one('a[href="vllm_guide_zh.html"]')
 
 GUIDE = '''# Link fixture
 

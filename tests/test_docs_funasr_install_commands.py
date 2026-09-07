@@ -7,8 +7,6 @@ ROOT = Path(__file__).resolve().parents[1]
 
 DOCS_WITH_CURRENT_FUNASR_INSTALL = [
     "docs/vllm_guide.md",
-    "docs/vllm_guide_zh.md",
-    "docs/vllm_guide_zh_v2.md",
     "examples/industrial_data_pretraining/fun_asr_nano/docs/finetune.md",
     "examples/industrial_data_pretraining/fun_asr_nano/docs/finetune_zh.md",
 ]
@@ -68,6 +66,18 @@ def test_current_funasr_install_commands_are_quoted():
         assert '"funasr>=1.3.26"' in text
         assert "funasr>=1.3.0" not in text
         assert not re.search(r"pip install funasr>=", text)
+
+
+def test_chinese_vllm_service_install_uses_a_pinned_checkout():
+    text = (ROOT / "docs/vllm_guide_zh.md").read_text()
+    blocks = re.findall(r"^```bash\n(.*?)^```", text, re.M | re.S)
+    install = blocks[0]
+    assert 'python -m pip install "vllm==0.19.1"' in install
+    assert "git clone https://github.com/modelscope/FunASR.git FunASR-vllm" in install
+    assert re.search(r"^git checkout --detach [0-9a-f]{40}$", install, re.M)
+    assert "python -m pip install -e ." in install
+    assert "python -m pip check" in install
+    assert not re.search(r"pip install.*funasr[>=]", install)
 
 
 def test_fun_asr_nano_finetune_zh_uses_canonical_filename():
