@@ -69,6 +69,8 @@ entry to these guides. Source Markdown remains in this repository.
    :maxdepth: 1
    :caption: Applications and Ecosystem
 
+   agent_integration
+   agent_integration_zh
    use_case_showcase
    use_case_showcase_zh
    community_projects

@@ -140,6 +140,22 @@
       "checklist": "readiness-checklist",
       "help": "when-to-open-an-issue"
     },
+    "agent.html": {
+      "server": "http-server",
+      "sdk": "sdk-and-curl",
+      "workflows": "workflow-integrations",
+      "mcp": "mcp-server",
+      "voice": "desktop-voice-input",
+      "subtitle": "subtitle-generation"
+    },
+    "zh/agent.html": {
+      "server": "http-服务",
+      "sdk": "sdk-与-curl",
+      "workflows": "工作流集成",
+      "mcp": "mcp-服务",
+      "voice": "桌面语音输入",
+      "subtitle": "字幕生成"
+    },
     "zh/deployment-matrix.html": {
       "matrix": "快速决策表",
       "choices": "常见选择",

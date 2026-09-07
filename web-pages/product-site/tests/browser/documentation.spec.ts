@@ -92,3 +92,37 @@ test('public speech sample is playable and waveform has actual pixels', async ({
   await page.locator('audio').evaluate((audio: HTMLAudioElement) => audio.pause());
   expect(await page.locator('.hero-image').evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(1000);
 });
+
+for (const prefix of ['', '/en']) {
+  for (const width of [390, 1440]) {
+    test(`Agent integration is discoverable and readable ${prefix || '/zh'} ${width}`, async ({ page, context }) => {
+      await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+      await page.setViewportSize({ width, height: 900 });
+      const errors: string[] = [];
+      page.on('pageerror', error => errors.push(error.message));
+      await page.goto(`${prefix}/docs/`);
+      await page.locator('[data-doc-search] input').fill('Agent');
+      const route = `${prefix}/docs/agent-integration.html`;
+      await page.locator(`.search-results a[href="${route}"]`).click();
+      await expect(page).toHaveURL(new RegExp(`${route}$`));
+      await expect(page.locator('[data-source-link]')).toHaveAttribute('href',
+        new RegExp(`/docs/agent_integration${prefix ? '' : '_zh'}.md$`));
+      await expect(page.locator('.docs-article h2')).toHaveCount(6);
+      const block = page.locator('.docs-article pre').first();
+      const expected = await block.locator('code').innerText();
+      await block.locator('button').click();
+      expect((await page.evaluate(() => navigator.clipboard.readText())).trim()).toBe(expected.trim());
+      for (const heading of await page.locator('.docs-article h2').all()) {
+        await heading.scrollIntoViewIfNeeded();
+        expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
+      }
+      const token = page.locator('.docs-article p code').filter({ hasText: 'verbose_json' }).first();
+      await expect(token).toBeVisible();
+      expect((await token.boundingBox())!.height).toBeLessThan(40);
+      const peer = `${prefix ? '' : '/en'}/docs/agent-integration.html`;
+      await page.locator(`.docs-article a[href="${peer}"]`).click();
+      await expect(page).toHaveURL(new RegExp(`${peer}$`));
+      expect(errors).toEqual([]);
+    });
+  }
+}

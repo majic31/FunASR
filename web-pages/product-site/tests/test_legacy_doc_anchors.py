@@ -19,6 +19,8 @@ OLD_IDS = {
     'moss-transcribe-diarize.html': 'contract server runtimes evidence boundaries',
     'vllm.html': 'overview install offline streaming-sdk websocket dynamic-vad performance api-reference faq',
     'deployment-matrix.html': 'matrix choices runtime-diagnostics checklist help',
+    # Independently inventoried from public EN/ZH pages on 2026-09-07.
+    'agent.html': 'server sdk workflows mcp voice subtitle',
 }
 PAGES = [prefix + name for name in OLD_IDS for prefix in ('', 'zh/')]
 
@@ -136,6 +138,17 @@ def test_insertion_is_idempotent_and_keeps_existing_anchors():
     assert str(soup) == first
     assert len(soup.select('#existing')) == 1
     assert soup.find(id='existing').name == 'a'
+
+
+@pytest.mark.parametrize('page, targets', [
+    ('agent.html', ['http-server', 'sdk-and-curl', 'workflow-integrations',
+                    'mcp-server', 'desktop-voice-input', 'subtitle-generation']),
+    ('zh/agent.html', ['http-服务', 'sdk-与-curl', '工作流集成',
+                       'mcp-服务', '桌面语音输入', '字幕生成']),
+])
+def test_agent_legacy_fragments_keep_their_topics(page, targets):
+    pages = json.loads((SITE / 'data/legacy_doc_anchors.json').read_text())['pages']
+    assert pages[page] == dict(zip('server sdk workflows mcp voice subtitle'.split(), targets))
 
 
 @pytest.mark.parametrize('heading', ('<h2 id="different">Topic</h2>', '<p id="topic">Not a heading</p>'))
