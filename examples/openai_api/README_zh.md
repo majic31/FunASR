@@ -28,7 +28,7 @@ SDK 的 `timestamp` 或 Nano 的 `timestamps` / `ctc_timestamps` 输出不会自
 ```bash
 git clone https://github.com/modelscope/FunASR.git FunASR-api
 cd FunASR-api
-git checkout --detach e19029adca384a06a2f60bd8c18cb98f1a0499aa
+git checkout --detach d91d961e37a005837b1523bcc6b09f087877be54
 python3.11 -m venv .venv
 source .venv/bin/activate
 python -m pip install -e .
@@ -69,14 +69,7 @@ curl http://localhost:8000/v1/audio/transcriptions \
 
 ## Gradio 浏览器 Demo
 
-如果希望用本地浏览器上传音频或测试麦克风，先启动 API 服务，再运行可选 Gradio 前端：
-
-```bash
-python -m pip install gradio
-python gradio_app.py --base-url http://localhost:8000
-```
-
-这个浏览器 demo 调用的就是 smoke test 使用的 OpenAI 兼容 API 端点。Docker、Kubernetes 和生产注意事项见 [Gradio 浏览器 Demo](GRADIO_zh.md)。
+本地文件上传或录制麦克风音频请使用维护中的 [Gradio 浏览器 Demo](GRADIO_zh.md)。它使用独立的 Python 3.12 环境 `.venv-gradio`，而不是本 API 服务的环境。指南覆盖 `funasr`、`vllm`、`sglang-omni` profiles、显式模型选择、Docker/Kubernetes 连通性、麦克风权限和隐私限制。UI 是独立 HTTP 客户端，不是鉴权网关或实时转写服务。
 
 ## 使用 OpenAI SDK
 

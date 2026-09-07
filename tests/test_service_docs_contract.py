@@ -2,6 +2,7 @@
 
 import argparse
 import ast
+import importlib.util
 import json
 from pathlib import Path
 import re
@@ -116,7 +117,7 @@ class ServiceDocsContract(unittest.TestCase):
             text = path.read_text(encoding="utf-8")
             quick_start = blocks(text, "bash")[0]
             ordered = ["git clone https://github.com/modelscope/FunASR.git FunASR-api", "cd FunASR-api",
-                       "git checkout --detach e19029adca384a06a2f60bd8c18cb98f1a0499aa",
+                       "git checkout --detach d91d961e37a005837b1523bcc6b09f087877be54",
                        "python3.11 -m venv .venv", "source .venv/bin/activate",
                        "python -m pip install -e .", "python -m pip install fastapi uvicorn python-multipart",
                        "python -m pip check", "cd examples/openai_api",
@@ -837,6 +838,156 @@ class SecurityDocsContract(unittest.TestCase):
                 "无鉴权本地", "不发送", "不是 Bearer")
             for marker in markers:
                 self.assertIn(marker, text)
+
+
+GRADIO_DOCS = [EXAMPLE / name for name in ("GRADIO.md", "GRADIO_zh.md")]
+GRADIO_HEADINGS = {
+    "GRADIO.md": "Gradio Browser Demo for the FunASR OpenAI-Compatible API|1. Start the API server|2. Install and launch the browser UI|3. Verify the backend first|Model aliases|Production notes",
+    "GRADIO_zh.md": "FunASR OpenAI 兼容 API Gradio 浏览器 Demo|1. 启动 API 服务|2. 安装并启动浏览器 UI|3. 先验证后端服务|模型别名|生产注意事项",
+}
+
+
+def shell_commands(text):
+    return [shlex.split(line, comments=True) for code in blocks(text, "bash")
+            for line in code.replace("\\\n", " ").splitlines()
+            if shlex.split(line, comments=True)]
+
+
+def gradio_client_module():
+    # The client imports Gradio only inside build_app, not during CLI parsing.
+    spec = importlib.util.spec_from_file_location("gradio_docs_client", EXAMPLE / "gradio_app.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+class GradioDocsContract(unittest.TestCase):
+    def test_preserves_gradio_headings_and_existing_links(self):
+        for path in GRADIO_DOCS:
+            text = path.read_text(encoding="utf-8")
+            source = re.sub(r"^```[^\n]*\n.*?^```[^\n]*$", "", text, flags=re.M | re.S)
+            actual = re.findall(r"^(#{1,6}) (.+)$", source, re.M)
+            self.assertEqual([heading for _, heading in actual], GRADIO_HEADINGS[path.name].split("|"))
+            self.assertEqual([len(level) for level, _ in actual], [1] + [2] * 5)
+            suffix = "_zh" if path.name.endswith("_zh.md") else ""
+            for relative in (f"../../docs/moss_transcribe_diarize{suffix}.md",
+                             f"../../docs/model_selection{suffix}.md", f"SECURITY{suffix}.md"):
+                self.assertIn(f"]({relative})", text)
+            for link in re.findall(r"\[[^\]]+\]\(([^)]+)\)", text):
+                parts = urlsplit(link)
+                if parts.scheme or parts.netloc:
+                    continue
+                target = (path.parent / unquote(parts.path)).resolve() if parts.path else path.resolve()
+                self.assertIn(ROOT.resolve(), target.parents)
+                self.assertNotIn(".mcp-tasks", target.parts)
+                self.assertTrue(target.is_file(), link)
+                if parts.fragment:
+                    self.assertIn(unquote(parts.fragment), headings(target.read_text(encoding="utf-8")), link)
+
+    def test_gradio_commands_are_bilingual_equivalent(self):
+        self.assertEqual(*(shell_commands(path.read_text(encoding="utf-8")) for path in GRADIO_DOCS))
+
+    def test_gradio_preflight_reuses_pinned_loopback_checkout(self):
+        for path in GRADIO_DOCS:
+            text = path.read_text(encoding="utf-8")
+            self.assertIn("SECURITY", text[:text.index("```bash")])
+            suffix = "_zh" if path.name.endswith("_zh.md") else ""
+            readme = (EXAMPLE / f"README{suffix}.md").read_text(encoding="utf-8")
+            self.assertEqual(shell_commands("```bash\n" + blocks(text, "bash")[0] + "```\n"),
+                             shell_commands("```bash\n" + blocks(readme, "bash")[0] + "```\n"))
+            for command in shell_commands(text):
+                if command[:2] == ["python", "server.py"]:
+                    self.assertEqual(command[command.index("--host") + 1], "127.0.0.1")
+                    self.assertEqual(command[command.index("--device") + 1], "cpu")
+
+    def test_gradio_client_environment_is_separate_and_reachable(self):
+        for path in GRADIO_DOCS:
+            text = path.read_text(encoding="utf-8")
+            setup = next((code for code in blocks(text, "bash") if "-m venv .venv-gradio" in code), None)
+            self.assertIsNotNone(setup, path.name)
+            commands = shell_commands("```bash\n" + setup + "```\n")
+            expected = [["cd", "FunASR-api"], ["python3.12", "-m", "venv", ".venv-gradio"],
+                        ["source", ".venv-gradio/bin/activate"],
+                        ["python", "-m", "pip", "install", "gradio==6.26.0"],
+                        ["python", "-m", "pip", "check"], ["cd", "examples/openai_api"]]
+            self.assertEqual(commands[:len(expected)], expected)
+            self.assertEqual(commands[-1][:2], ["python", "gradio_app.py"])
+            self.assertNotIn(["python", "-m", "pip", "install", "-e", "."], commands)
+            self.assertNotIn("--share", commands[-1])
+
+    def test_gradio_recipes_cover_profiles_and_explicit_served_model(self):
+        client = gradio_client_module()
+        for path in GRADIO_DOCS:
+            launches = [command[2:] for command in shell_commands(path.read_text(encoding="utf-8"))
+                        if command[:2] == ["python", "gradio_app.py"]]
+            self.assertGreaterEqual(len(launches), 5, path.name)
+            pairs = set()
+            for command in launches:
+                self.assertLessEqual({"--backend", "--model", "--base-url", "--host", "--port"}, set(command))
+                options = client.parse_args(command)
+                self.assertEqual(options.host, "127.0.0.1")
+                self.assertEqual(options.port, 7860)
+                self.assertFalse(options.share)
+                url = urlsplit(options.base_url)
+                self.assertEqual((url.scheme, url.hostname, url.path, url.query, url.fragment),
+                                 ("http", "127.0.0.1", "", "", ""))
+                self.assertIn(url.port, (8000, 8898))
+                pairs.add((options.backend, options.model))
+            self.assertLessEqual({("funasr", "sensevoice"), ("funasr", "moss-transcribe-diarize"),
+                                 ("vllm", "moss-transcribe-diarize"),
+                                 ("sglang-omni", "OpenMOSS-Team/MOSS-Transcribe-Diarize"),
+                                 ("vllm", "meeting-asr")}, pairs)
+
+    def test_gradio_model_lists_distinguish_service_contracts(self):
+        profiles = gradio_client_module().BACKEND_PROFILES
+        configs = next(node for node in ast.walk(tree(EXAMPLE / "server.py"))
+                       if isinstance(node, ast.Assign) and any(isinstance(target, ast.Name)
+                       and target.id == "MODEL_CONFIGS" for target in node.targets))
+        aliases = [ast.literal_eval(key) for key in configs.value.keys]
+        self.assertEqual(list(profiles["funasr"]["models"]), aliases)
+        for path in GRADIO_DOCS:
+            text = path.read_text(encoding="utf-8")
+            heading = "Model aliases" if path.name == "GRADIO.md" else "模型别名"
+            section = text.split("## " + heading + "\n", 1)[1].split("\n## ", 1)[0]
+            self.assertNotRegex(section, r"(?m)^\|", path.name)
+            self.assertEqual(re.findall(r"(?m)^- `([^`]+)`", section), aliases)
+            for backend, profile in profiles.items():
+                paragraph = text.split(f"**{backend}**", 1)[1].split("\n\n", 1)[0]
+                identifiers = re.findall(r"`([^`]+)`", paragraph)
+                self.assertEqual(identifiers[:2], [profile["models"][0], profile["default_format"]])
+                self.assertLessEqual(set(profile["formats"]), set(identifiers))
+            for marker in ("funasr", "vllm", "sglang-omni", "json", "verbose_json", "diarized_json",
+                           "OpenMOSS-Team/MOSS-Transcribe-Diarize", "--model", "speaker", "[Sxx]",
+                           "segments", "duration", "sentence_info", "Fun-ASR-MLT-Nano"):
+                self.assertIn(marker, text, path.name)
+
+    def test_gradio_guides_explain_remote_privacy_and_check_boundaries(self):
+        markers = {
+            "GRADIO.md": ("Authorization", "Basic", "Bearer", "allowlist", "redirect", "--share",
+                          "Gradio process", "temporary", "redact", "not streaming", "does not cancel",
+                          "Chinese sample", "downloads", "not an authentication", "metadata",
+                          "not a model-readiness", "not an identity"),
+            "GRADIO_zh.md": ("Authorization", "Basic", "Bearer", "allowlist", "重定向", "--share",
+                             "Gradio 进程", "临时", "脱敏", "不是流式", "不会取消",
+                             "中文样本", "下载", "不是鉴权", "metadata", "不代表模型就绪", "不是身份"),
+        }
+        for path in GRADIO_DOCS:
+            text = path.read_text(encoding="utf-8")
+            for marker in markers[path.name]:
+                self.assertIn(marker.lower(), text.lower(), path.name)
+
+    def test_readmes_delegate_gradio_install_to_isolated_guide(self):
+        sections = ("Browser demo with Gradio", "Gradio 浏览器 Demo", "Gradio ブラウザデモ", "Gradio 브라우저 데모")
+        for path, heading in zip(READMES, sections):
+            text = path.read_text(encoding="utf-8")
+            section = text.split("## " + heading + "\n", 1)[1].split("\n## ", 1)[0]
+            self.assertNotIn("```", section, path.name)
+            self.assertNotIn("pip install", section, path.name)
+            self.assertNotIn("python gradio_app.py", section, path.name)
+            guide = "GRADIO_zh.md" if path.name == "README_zh.md" else "GRADIO.md"
+            self.assertIn(f"]({guide})", section)
+            self.assertIn(".venv-gradio", section)
+            self.assertIn("Python 3.12", section)
 
 
 if __name__ == "__main__":

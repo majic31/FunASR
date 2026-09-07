@@ -28,7 +28,7 @@ Use a fresh checkout and a POSIX shell with Python 3.11 installed:
 ```bash
 git clone https://github.com/modelscope/FunASR.git FunASR-api
 cd FunASR-api
-git checkout --detach e19029adca384a06a2f60bd8c18cb98f1a0499aa
+git checkout --detach d91d961e37a005837b1523bcc6b09f087877be54
 python3.11 -m venv .venv
 source .venv/bin/activate
 python -m pip install -e .
@@ -69,14 +69,7 @@ curl http://localhost:8000/v1/audio/transcriptions \
 
 ## Browser demo with Gradio
 
-If you want a local browser UI for upload or microphone testing, run the API server first and then launch the optional Gradio frontend:
-
-```bash
-python -m pip install gradio
-python gradio_app.py --base-url http://localhost:8000
-```
-
-The browser demo calls the same OpenAI-compatible API endpoints as the smoke tests. See [Gradio browser demo](GRADIO.md) for Docker, Kubernetes, and production notes.
+For local file upload or recorded microphone audio, follow the maintained [Gradio browser demo](GRADIO.md). It uses a separate Python 3.12 environment, `.venv-gradio`, rather than this API server's environment. The guide covers the `funasr`, `vllm`, and `sglang-omni` profiles, explicit model selection, Docker/Kubernetes connectivity, microphone permissions, and privacy limits. The UI is a separate HTTP client, not an authentication gateway or a realtime transcription service.
 
 ## Usage with OpenAI SDK (Python)
 
