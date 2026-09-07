@@ -1,12 +1,13 @@
 import re
+import shlex
 from pathlib import Path
 
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 DOCS_WITH_CURRENT_FUNASR_INSTALL = [
-    "docs/vllm_guide.md",
     "examples/industrial_data_pretraining/fun_asr_nano/docs/finetune.md",
     "examples/industrial_data_pretraining/fun_asr_nano/docs/finetune_zh.md",
 ]
@@ -68,8 +69,9 @@ def test_current_funasr_install_commands_are_quoted():
         assert not re.search(r"pip install funasr>=", text)
 
 
-def test_chinese_vllm_service_install_uses_a_pinned_checkout():
-    text = (ROOT / "docs/vllm_guide_zh.md").read_text()
+@pytest.mark.parametrize("relpath", ["docs/vllm_guide.md", "docs/vllm_guide_zh.md"])
+def test_vllm_service_install_uses_a_pinned_checkout(relpath):
+    text = (ROOT / relpath).read_text()
     blocks = re.findall(r"^```bash\n(.*?)^```", text, re.M | re.S)
     install = blocks[0]
     assert 'python -m pip install "vllm==0.19.1"' in install
@@ -78,6 +80,18 @@ def test_chinese_vllm_service_install_uses_a_pinned_checkout():
     assert "python -m pip install -e ." in install
     assert "python -m pip check" in install
     assert not re.search(r"pip install.*funasr[>=]", install)
+
+
+def test_vllm_install_translations_have_identical_commands():
+    recipes = []
+    for relpath in ("docs/vllm_guide.md", "docs/vllm_guide_zh.md"):
+        text = (ROOT / relpath).read_text()
+        install = re.findall(r"^```bash\n(.*?)^```", text, re.M | re.S)[0]
+        recipes.append([
+            tokens for line in install.splitlines()
+            if (tokens := shlex.split(line, comments=True))
+        ])
+    assert recipes[0] == recipes[1]
 
 
 def test_fun_asr_nano_finetune_zh_uses_canonical_filename():

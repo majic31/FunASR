@@ -30,20 +30,34 @@ def test_vllm_guides_distinguish_official_and_native_model_paths(relpath):
         assert marker in text, f"{relpath} is missing {marker}"
 
 
-def test_primary_guide_keeps_native_vllm_and_funasr_realtime_paths_separate():
-    text = (ROOT / "docs/vllm_guide_zh.md").read_text(encoding="utf-8")
-
-    required_markers = [
-        "FunAudioLLM/Fun-ASR-Nano-2512-vllm",
-        "vllm_official_native_validation_zh.md",
-        "serve_realtime_ws.py",
-        "VAD、partial",
-        "不会注册 `/v1/realtime`",
-        "不是稳定的 API 契约",
-    ]
+@pytest.mark.parametrize(
+    ("relpath", "required_markers"),
+    [
+        ("docs/vllm_guide_zh.md", [
+            "FunAudioLLM/Fun-ASR-Nano-2512-vllm",
+            "vllm_official_native_validation_zh.md",
+            "serve_realtime_ws.py",
+            "VAD、partial",
+            "不会注册 `/v1/realtime`",
+            "不是稳定的 API 契约",
+        ]),
+        ("docs/vllm_guide.md", [
+            "FunAudioLLM/Fun-ASR-Nano-2512-vllm",
+            "vllm_official_native_validation.md",
+            "serve_realtime_ws.py",
+            "VAD, partial",
+            "they do not register",
+            "not a stable API contract",
+        ]),
+    ],
+)
+def test_primary_guide_keeps_native_vllm_and_funasr_realtime_paths_separate(
+    relpath, required_markers
+):
+    text = (ROOT / relpath).read_text(encoding="utf-8")
 
     for marker in required_markers:
-        assert marker in text, f"docs/vllm_guide_zh.md is missing {marker}"
+        assert marker in text, f"{relpath} is missing {marker}"
 
 
 @pytest.mark.parametrize(
