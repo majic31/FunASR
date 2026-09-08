@@ -1,0 +1,51 @@
+# ---------------------------------------------------------------
+# 基于 funasr-nano_vllm:gpu_1.1 构建开箱即用的 ASR 服务镜像
+# ---------------------------------------------------------------
+# 构建：
+#   docker build -f Dockerfile.serve.gpu \
+#                -t funasr-nano_serve:gpu_1.0 .
+#
+# 运行（最简）：
+#   docker run --gpus all -p 8000:8000 funasr-nano_serve:gpu_1.0
+#
+# 运行（挂载整个 FunASR 代码，用于开发调试）：
+#   docker run --gpus all \
+#     -p 8000:8000 \
+#     -v /data/asr_logs:/logs \
+#     -v /data/models:/workspace/models \
+#     -v $(pwd):/workspace/FunASR \
+#     funasr-nano_serve:gpu_1.0 \
+#     --port 8000 --workers 2 --log-level DEBUG
+#
+# 注意：由于使用了 ENTRYPOINT，在 docker run 镜像名后面追加的所有参数（如 --port 8000）
+# 都会直接传给 serve_vllm_optimized.py 脚本。如果你想覆盖环境变量，依然可以使用 -e。
+# 如果想进入容器内部调试（覆盖 ENTRYPOINT），请加上：--entrypoint /bin/bash
+# ---------------------------------------------------------------
+
+FROM funasr-nano_vllm:gpu_1.1
+
+# 工作目录与当前仓库已在基础镜像中通过 pip install -e . 安装好；
+# 这里只需把最新的 serve_vllm_optimized.py 覆盖进去
+WORKDIR /workspace/FunASR
+
+# 只复制服务脚本，避免重新安装全部依赖。
+# (如果启动容器时用了 -v $(pwd):/workspace/FunASR，则宿主机的代码会直接覆盖此处的代码，
+# 从而实现“宿主机改代码，容器内直接生效”的开发调试模式)
+COPY examples/industrial_data_pretraining/fun_asr_nano/serve_vllm_optimized.py \
+     examples/industrial_data_pretraining/fun_asr_nano/serve_vllm_optimized.py
+
+# 日志目录（容器内）；建议用 -v /host/path:/logs 挂载到宿主机持久化
+RUN mkdir -p /logs
+
+# 模型缓存目录（与基础镜像保持一致）
+ENV MODELSCOPE_CACHE=/workspace/models
+
+# 默认日志路径（可通过环境变量 LOG_DIR 覆盖）
+ENV LOG_DIR=/logs
+
+# 对外暴露服务端口（docker run -p 宿主机端口:8000）
+EXPOSE 8000
+
+# 启动服务；使用 ENTRYPOINT，方便在 docker run 后面直接追加 argparse 参数
+ENTRYPOINT ["python", "examples/industrial_data_pretraining/fun_asr_nano/serve_vllm_optimized.py"]
+CMD []

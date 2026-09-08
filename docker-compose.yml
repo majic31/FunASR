@@ -1,0 +1,32 @@
+services:
+  funasr-serve:
+    image: funasr-nano_serve:gpu_1.0
+    container_name: funasr-nano-vllm-7
+    restart: always  # 崩溃或机器重启后自动拉起
+    ports:
+      - "8000:8000"
+    volumes:
+      - /data/funasr_offline_7/logs:/logs
+      - /data/funasr_docker/models:/workspace/models
+      - /data/funasr_docker/offline/funasr_source.20260907:/workspace/FunASR
+    # 这里对应原来在 docker run 镜像名后面追加的参数
+    command:
+      - "--workers"
+      - "1"
+      - "--log-level"
+      - "DEBUG"
+      - "--model"
+      - "/workspace/models/hub/iic/FunAudioLLM--Fun-ASR-Nano-2512/snapshots/master/"
+      - "--vad-model"
+      - "/workspace/models/hub/iic/speech_fsmn_vad_zh-cn-16k-common-pytorch/"
+      - "--spk-model"
+      - "/workspace/models/hub/iic/speech_eres2netv2_sv_zh-cn_16k-common/snapshots/master/"
+    
+    # 这部分相当于 --gpus '"device=7"'
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['7']
+              capabilities: [gpu]
