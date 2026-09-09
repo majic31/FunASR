@@ -23,7 +23,7 @@ try:
 except:
     pass
 if LooseVersion(torch.__version__) >= LooseVersion("1.6.0"):
-    from torch.cuda.amp import autocast
+    from funasr.utils.amp import autocast
 else:
     # Nothing to do if torch<1.6.0
     @contextmanager
@@ -416,11 +416,15 @@ class CTTransformer(torch.nn.Module):
                     new_mini_sentence_punc_out = new_mini_sentence_punc[:-1] + [
                         self.sentence_end_id
                     ]
+                    if len(punctuations):
+                        punctuations[-1] = self.sentence_end_id
                 elif new_mini_sentence[-1] == ",":
                     new_mini_sentence_out = new_mini_sentence[:-1] + "."
                     new_mini_sentence_punc_out = new_mini_sentence_punc[:-1] + [
                         self.sentence_end_id
                     ]
+                    if len(punctuations):
+                        punctuations[-1] = self.sentence_end_id
                 elif (
                     new_mini_sentence[-1] != "。"
                     and new_mini_sentence[-1] != "？"
@@ -431,7 +435,7 @@ class CTTransformer(torch.nn.Module):
                         self.sentence_end_id
                     ]
                     if len(punctuations):
-                        punctuations[-1] = 2
+                        punctuations[-1] = self.sentence_end_id
                 elif (
                     new_mini_sentence[-1] != "."
                     and new_mini_sentence[-1] != "?"
@@ -442,7 +446,7 @@ class CTTransformer(torch.nn.Module):
                         self.sentence_end_id
                     ]
                     if len(punctuations):
-                        punctuations[-1] = 2
+                        punctuations[-1] = self.sentence_end_id
             # keep a punctuations array for punc segment
             if punc_array is None:
                 punc_array = punctuations

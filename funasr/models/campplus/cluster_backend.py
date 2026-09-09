@@ -11,6 +11,7 @@ import numpy as np
 
 from sklearn.cluster._kmeans import k_means
 from sklearn.cluster import HDBSCAN
+from sklearn.preprocessing import normalize
 
 
 class SpectralCluster:
@@ -191,6 +192,21 @@ class UmapHdbscan:
         return labels
 
 
+class KMeansCluster:
+    r"""Cluster a large set of speaker embeddings into a known number of groups."""
+
+    def __call__(self, X, num_clusters):
+        """Cluster L2-normalized embeddings with bounded memory usage."""
+        normalized_X = normalize(X)
+        _, labels, _ = k_means(
+            normalized_X,
+            num_clusters,
+            random_state=0,
+            n_init=10,
+        )
+        return labels
+
+
 class ClusterBackend(torch.nn.Module):
     r"""Perfom clustering for input embeddings and output the labels.
     Args:
@@ -210,6 +226,7 @@ class ClusterBackend(torch.nn.Module):
 
         self.spectral_cluster = SpectralCluster()
         self.umap_hdbscan_cluster = UmapHdbscan()
+        self.kmeans_cluster = KMeansCluster()
 
     def forward(self, X, **params):
         # clustering and return the labels
@@ -226,9 +243,11 @@ class ClusterBackend(torch.nn.Module):
         # maj test 这里从20调整为3，认为是3个段以上都可以进行聚类
         if X.shape[0] < 3:
             return np.zeros(X.shape[0], dtype="int")
-        if X.shape[0] < 4096 or k is not None:
+        if X.shape[0] < 4096:
             # unexpected corner case
             labels = self.spectral_cluster(X, k)
+        elif k is not None:
+            labels = self.kmeans_cluster(X, k)
         else:
             labels = self.umap_hdbscan_cluster(X)
 

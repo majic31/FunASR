@@ -4,7 +4,7 @@ Use this guide when you are choosing a first model, comparing FunASR with Whispe
 
 ## Fast default path
 
-If you have a GPU, start with the flagship **Fun-ASR-Nano** — an LLM-based ASR model (SenseVoice encoder + a Qwen3 decoder) covering 31 languages, with the strongest accuracy on hard cases, context, and proper nouns:
+For GPU evaluation of Chinese, English, Japanese, or Chinese dialects and regional accents, start with the flagship **Fun-ASR-Nano** (SenseVoice encoder + Qwen3 decoder). Compare it on your own audio before choosing a production model:
 
 ```python
 from funasr import AutoModel
@@ -14,7 +14,7 @@ result = model.generate(input="meeting.wav")
 print(result[0]["text"])
 ```
 
-On CPU, or when you want multilingual + emotion/event tags and speaker-aware meeting transcripts in one fast non-autoregressive pass, use **SenseVoice-Small**:
+For non-autoregressive multilingual ASR with emotion/event tags, or a CPU evaluation path, start with **SenseVoice-Small**. The example below adds separate VAD and speaker-processing stages for meeting transcripts; speaker diarization is not a SenseVoice output from the same recognition pass:
 
 ```python
 from funasr import AutoModel
@@ -28,6 +28,11 @@ model = AutoModel(
 result = model.generate(input="meeting.wav")
 ```
 
+SenseVoice produces transcription and rich tags. `fsmn-vad` locates speech;
+`cam++` produces speaker embeddings, which the pipeline clusters into anonymous
+labels within a recording. These labels do not identify registered people and
+are not stable identities across recordings.
+
 Switch to Paraformer when your workload is Mandarin-only and you want character-level timestamps or hotwords.
 
 ## Decision table
@@ -37,7 +42,8 @@ Switch to Paraformer when your workload is Mandarin-only and you want character-
 | Fast multilingual private transcription | SenseVoice-Small | Strong default with ASR, emotion tags, audio event tags, and CPU viability. | [README quick start](../README.md#quick-start) |
 | Mandarin production ASR | Paraformer-Large | Mature Chinese ASR path with VAD and punctuation. | [Tutorial](./tutorial/README.md) |
 | English-only route in the OpenAI API example | `paraformer-en` alias | Smaller English route for API compatibility checks. | [OpenAI API example](../examples/openai_api/) |
-| LLM-based ASR or 31-language experiments | Fun-ASR-Nano | LLM-based model path; use vLLM when decoder throughput matters. | [vLLM guide](./vllm_guide.md) |
+| LLM-based ASR or Chinese/English/Japanese + dialect experiments | Fun-ASR-Nano | LLM-based model path; use vLLM when decoder throughput matters. | [vLLM guide](./vllm_guide.md) |
+| Offline long-form ASR with anonymous diarization | MOSS-Transcribe-Diarize | One offline request returns transcription, timestamps, and per-recording anonymous speaker labels; it does not identify known people and needs no external VAD or speaker model. | [MOSS deployment guide](./moss_transcribe_diarize.md) |
 | Live captions or call-center streams | Runtime WebSocket service | Designed for long-lived streaming sessions and partial results. | [Runtime service docs](../runtime/readme.md) |
 | Batch archive processing | SenseVoice-Small or Paraformer-Large | Stable offline transcription path; caller owns manifests, retries, and logs. | [Batch ASR example](../examples/batch_asr_improved.py) |
 | Migration from Whisper/cloud ASR | SenseVoice-Small first, then benchmark alternatives | Gives a strong baseline before deeper model-specific tuning. | [Migration guide](./migration_from_whisper.md) |
@@ -46,12 +52,15 @@ Switch to Paraformer when your workload is Mandarin-only and you want character-
 
 The `examples/openai_api` server exposes short aliases so application teams do not need to know model repository IDs:
 
-| Alias | Underlying path | Use when |
-|---|---|---|
-| `sensevoice` | `iic/SenseVoiceSmall` | You want the default private speech API with multilingual ASR, event tags, and good CPU/GPU behavior. |
-| `paraformer` | `paraformer-zh` with VAD and punctuation | You want a Mandarin-oriented production route. |
-| `paraformer-en` | `paraformer-en` with VAD | You want a compact English route in OpenAI-style clients. |
-| `fun-asr-nano` | `FunAudioLLM/Fun-ASR-Nano-2512` | You are evaluating LLM-based ASR, 31-language coverage, or vLLM acceleration. |
+- **`sensevoice`** uses `iic/SenseVoiceSmall` for multilingual HTTP transcription on CPU/GPU. Returned text has rich tags removed.
+- **`paraformer`** uses `paraformer-zh` with VAD and punctuation for a Mandarin-oriented route.
+- **`paraformer-en`** uses `paraformer-en` with VAD for English transcription in OpenAI-style clients.
+- **`fun-asr-nano`** uses `FunAudioLLM/Fun-ASR-Nano-2512` for evaluating Chinese, English, Japanese, and Chinese dialect/accent coverage. Select a compatible runtime when evaluating vLLM acceleration.
+
+The example HTTP service cleans both top-level `text` and segment `text` in
+`verbose_json`; that format does not restore emotion/event tags. If you need
+the original tags, use the Python SDK and preserve the returned `text` before
+display postprocessing. See the [raw-tag recipe](./speaker_emotion.md).
 
 For Ascend NPU deployments, treat `fun-asr-nano` separately from SenseVoice / Paraformer. The Fun-ASR-Nano PyTorch `AutoModel` path has community compatibility evidence on 310P3 after the NPU autocast fix, but it was much slower than CPU in that smoke test; `AutoModelVLLM` still depends on vLLM-Ascend operator support and has hit Qwen3 rotary / `TransData` failures. Use CUDA/vLLM, standard PyTorch CPU/GPU, or GGUF runtime for production unless you are actively validating an Ascend backend.
 
@@ -91,9 +100,10 @@ For migration work, use the [migration benchmark example](../examples/migration/
 
 ## Practical recommendations
 
-- With a GPU, default to Fun-ASR-Nano — the flagship LLM-based model (31 languages), strongest on hard, contextual, and proper-noun-heavy audio.
+- With a GPU, evaluate Fun-ASR-Nano for Chinese, English, Japanese, and Chinese dialects/accents. Include difficult audio, context and proper nouns in your own comparison. For the separate 31-language checkpoint, use Fun-ASR-MLT-Nano.
 - On CPU, or for multilingual + emotion workloads, use SenseVoice-Small (fast non-autoregressive, CPU-viable).
 - Use Paraformer when your production traffic is primarily Mandarin and you want timestamps or hotwords.
+- For offline long recordings that need anonymous per-recording speaker labels in the same request, use MOSS-Transcribe-Diarize; it is not a realtime WebSocket or known-person identification path.
 - Use the streaming runtime when partial results and long-lived connections matter more than a single final transcript.
 - Keep model aliases stable in production runbooks so benchmark results and bug reports are reproducible.
 - Open a [Deployment Help issue](https://github.com/modelscope/FunASR/issues/new?template=deployment_help.md) with model, device, command, logs, audio duration, and runtime path when you get stuck.

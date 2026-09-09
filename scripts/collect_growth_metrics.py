@@ -2,7 +2,8 @@
 """Collect lightweight growth metrics for the FunASR repository.
 
 The script uses only Python's standard library and public APIs by default.
-Set GITHUB_TOKEN to raise GitHub API rate limits in CI or release workflows.
+Set GITHUB_TOKEN, or place a token in the FunASR ops token file, to raise
+GitHub API rate limits in CI or release workflows.
 """
 
 from __future__ import annotations
@@ -21,41 +22,36 @@ from typing import Any, Dict, Optional, Sequence
 DEFAULT_REPO = "modelscope/FunASR"
 DEFAULT_ECOSYSTEM_REPOS = [
     "modelscope/FunASR",
-    "FunAudioLLM/Fun-ASR",
-    "FunAudioLLM/SenseVoice",
+    "QwenAudio/Fun-ASR",
+    "QwenAudio/SenseVoice",
     "modelscope/FunClip",
 ]
 DEFAULT_PACKAGE = "funasr"
 DEFAULT_BASELINE_STARS = 31224
 DEFAULT_TARGET_ADDITIONAL_STARS = 20000
 DEFAULT_TARGET_DATE = "2026-09-30"
+OPS_GITHUB_TOKEN_PATH = Path("/cpfs_speech/user/zhifu.gzf/.config/funasr-ops/github_token")
+DEFAULT_PYPI_DOWNLOAD_CACHE = Path("/cpfs_speech/user/zhifu.gzf/.cache/funasr-ops/pypi-downloads-funasr.json")
 DEFAULT_INTEGRATION_PRS = [
     "huggingface/transformers#46180",
-    "sgl-project/sglang-omni#898",
+    "huggingface/optimum-intel#1874",
     "yuekaizhang/Fun-ASR-vllm#21",
     "ray-project/ray#64053",
-    "huggingface/optimum-intel#1801",
-    "openvino-agent/optimum-intel#5",
+    "sgl-project/sglang-omni#1460",
     "huggingface/speech-to-speech#319",
     "livekit/agents#6176",
-    "mahimairaja/voiceai#16",
     "punkpeye/awesome-mcp-servers#7153",
     "run-llama/llama_index#21958",
     "run-llama/llama_index#21996",
+    "BerriAI/litellm-docs#610",
     "mem0ai/mem0#5571",
-    "Significant-Gravitas/AutoGPT#13500",
-    "tmoroney/auto-subs#629",
-    "infiniflow/ragflow#16473",
-    "pipecat-ai/pipecat#4844",
     "speaches-ai/speaches#658",
     "mudler/LocalAI#10090",
     "getpaseo/paseo#1634",
     "agno-agi/agno#8501",
     "GetStream/Vision-Agents#606",
     "TEN-framework/ten-framework#2191",
-    "activepieces/activepieces#13985",
     "Uberi/speech_recognition#903",
-    "ai4s-research/awesome-ai-for-science#69",
     "lukasmasuch/best-of-ml-python#455",
     "tensorchord/Awesome-LLMOps#533",
     "rafska/awesome-local-llm#118",
@@ -67,16 +63,12 @@ DEFAULT_INTEGRATION_PRS = [
     "Osmantic/ODS#1639",
     "faroit/awesome-python-scientific-audio#85",
     "joewongjc/type4me#207",
-    "ga642381/speech-trident#31",
     "EmulationAI/awesome-large-audio-models#19",
     "ddlBoJack/Awesome-Speech-Language-Model#6",
-    "LqNoob/Neural-Codec-and-Speech-Language-Models#4",
     "PyTorchKR/oss-landscape#688",
     "metame-ai/awesome-audio-plaza#10",
-    "vinta/awesome-python#3246",
     "fighting41love/funNLP#478",
     "josephmisiti/awesome-machine-learning#1339",
-    "RVC-Boss/GPT-SoVITS#2801",
     "jobbole/awesome-python-cn#141",
     "ChristosChristofidis/awesome-deep-learning#317",
     "Hannibal046/Awesome-LLM#623",
@@ -87,7 +79,6 @@ DEFAULT_INTEGRATION_PRS = [
     "bharathgs/Awesome-pytorch-list#164",
     "owainlewis/awesome-artificial-intelligence#243",
     "steven2358/awesome-generative-ai#821",
-    "WangRongsheng/awesome-LLM-resources#162",
     "crownpku/Awesome-Chinese-NLP#32",
 ]
 FAILED_CHECK_CONCLUSIONS = {"action_required", "cancelled", "failure", "startup_failure", "timed_out"}
@@ -115,16 +106,28 @@ KNOWN_EXTERNAL_CHECK_FAILURES = {
         },
         "reason": "Current c70504e failures are unrelated OpenVINO matrix failures in Pix2Struct, image-text quantization/export, and tiny-random T5; direct cleanup mirror #1856 was closed for maintainer preliminary PR",
         "action": "wait for maintainer preliminary PR",
-    }
+    },
+    "ray-project/ray#64053": {
+        "failed_check_names": {
+            "buildkite/microcheck",
+            "docs/readthedocs.com:anyscale-ray",
+        },
+        "reason": "Current Ray failures are Buildkite/ReadTheDocs gates already triaged; the remaining PR-local Black fix is waiting on the contributor branch owner",
+        "action": "wait for contributor branch update",
+    },
+    "sgl-project/sglang-omni#1460": {
+        "failed_check_names": {"omni-ci-gate"},
+        "reason": (
+            "Omni CI stopped at the missing run-ci opt-in before setup or ASR GPU tests; "
+            "the PR author must run `/tag-and-rerun-ci fun-asr`"
+        ),
+        "action": "wait for PR author CI opt-in",
+    },
 }
 KNOWN_REVIEW_GATES = {
-    "sgl-project/sglang-omni#898": {
-        "action": "wait for contributor conflict resolution",
-        "reason": "Contributor-owned branch is dirty; conflict recipe already posted from the FunASR side",
-    },
     "punkpeye/awesome-mcp-servers#7153": {
-        "action": "submit Glama",
-        "reason": "Glama listing and score badge required before review",
+        "action": "wait for maintainer review",
+        "reason": "Glama listing and score badge are live",
     },
     "mem0ai/mem0#5571": {
         "action": "wait for preview authorization",
@@ -148,6 +151,9 @@ KNOWN_REVIEW_GATES = {
     }
 }
 KNOWN_ASSISTED_REVIEW_REQUESTS = {
+    "huggingface/transformers#46180": {
+        "reason": "checks are green and the remaining blocker is an active maintainer-held review thread",
+    },
     "infiniflow/ragflow#16473": {
         "reason": "review evidence already posted; avoid duplicate pings",
     },
@@ -159,6 +165,9 @@ KNOWN_ASSISTED_REVIEW_REQUESTS = {
     },
     "run-llama/llama_index#21996": {
         "reason": "FunASR dependency gate addressed; avoid duplicate pings",
+    },
+    "BerriAI/litellm-docs#610": {
+        "reason": "conflict resolved and Docusaurus build/check evidence posted; avoid duplicate pings",
     },
     "mudler/LocalAI#10090": {
         "reason": "review evidence already posted; avoid duplicate pings",
@@ -203,7 +212,7 @@ KNOWN_ASSISTED_REVIEW_REQUESTS = {
         "reason": "FunASR scientific-audio listing evidence already posted; avoid duplicate pings",
     },
     "joewongjc/type4me#207": {
-        "reason": "draft validation status already posted; keep draft until Qwen3-only ASR smoke test",
+        "reason": "Qwen3-only ASR smoke evidence posted and PR is ready for maintainer review",
     },
     "ga642381/speech-trident#31": {
         "reason": "SenseVoice model-list evidence already posted; avoid duplicate pings",
@@ -292,9 +301,6 @@ KNOWN_ASSISTED_REVIEW_REQUESTS = {
     "steven2358/awesome-generative-ai#821": {
         "reason": "high-star discovery-list PR already opened with project evidence; avoid duplicate pings",
     },
-    "WangRongsheng/awesome-LLM-resources#162": {
-        "reason": "high-star discovery-list PR already opened with project evidence; avoid duplicate pings",
-    },
     "crownpku/Awesome-Chinese-NLP#32": {
         "reason": "high-star discovery-list PR already opened with project evidence; avoid duplicate pings",
     },
@@ -304,6 +310,7 @@ CONTRIBUTOR_WAITING_LABELS = {"good first issue", "help wanted", "ready for PR"}
 MANUAL_HANDOFF_ACTIONS = {
     "submit Glama",
     "wait for author CLA",
+    "wait for PR author CI opt-in",
     "wait for contributor conflict resolution",
     "wait for preview authorization",
 }
@@ -314,7 +321,9 @@ PASSIVE_INTEGRATION_ACTIONS = {
     "preview auth gate",
     "resolve CLA",
     "wait for checks",
+    "wait for contributor branch update",
     "wait for maintainer preliminary PR",
+    "wait for maintainer merge",
     "wait for maintainer rerun",
     "wait for maintainer review",
 }
@@ -332,6 +341,82 @@ def fetch_json(url: str, headers: Optional[Dict[str, str]] = None) -> Any:
         raise RuntimeError(f"GET {url} failed: {exc.reason}") from exc
 
 
+def pypi_download_cache_path(package: str) -> Path:
+    if package == DEFAULT_PACKAGE:
+        return DEFAULT_PYPI_DOWNLOAD_CACHE
+    return DEFAULT_PYPI_DOWNLOAD_CACHE.with_name(f"pypi-downloads-{package}.json")
+
+
+def write_pypi_download_cache(package: str, metrics: Dict[str, Any]) -> None:
+    cache_path = pypi_download_cache_path(package)
+    try:
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        cache_path.write_text(
+            json.dumps({"package": package, "metrics": metrics}, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+    except OSError:
+        pass
+
+
+def read_pypi_download_cache(package: str, reason: str) -> Optional[Dict[str, Any]]:
+    cache_path = pypi_download_cache_path(package)
+    try:
+        cached = json.loads(cache_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if cached.get("package") != package:
+        return None
+    metrics = cached.get("metrics")
+    if not isinstance(metrics, dict):
+        return None
+    required = {"latest_date", "downloads_last_7_days", "downloads_last_30_days", "source_url"}
+    if not required.issubset(metrics):
+        return None
+    stale = dict(metrics)
+    stale["status"] = "stale_available"
+    stale["cache_path"] = str(cache_path)
+    stale["reason"] = reason
+    return stale
+
+
+def collect_pypi_download_metrics(package: str) -> Dict[str, Any]:
+    url = f"https://pypistats.org/api/packages/{package}/overall?mirrors=false"
+    try:
+        payload = fetch_json(url, {"User-Agent": "funasr-growth-metrics"})
+        rows = [
+            row
+            for row in payload.get("data", [])
+            if row.get("category") == "without_mirrors"
+            and row.get("date")
+            and isinstance(row.get("downloads"), int)
+        ]
+        rows.sort(key=lambda row: row["date"])
+        if not rows:
+            raise RuntimeError("PyPIStats returned no daily download rows")
+        metrics = {
+            "source": "pypistats.org",
+            "source_url": f"https://pypistats.org/packages/{package}",
+            "latest_date": rows[-1]["date"],
+            "downloads_last_7_days": sum(row["downloads"] for row in rows[-7:]),
+            "downloads_last_30_days": sum(row["downloads"] for row in rows[-30:]),
+            "status": "available",
+        }
+        write_pypi_download_cache(package, metrics)
+        return metrics
+    except Exception as exc:
+        reason = str(exc)
+        cached = read_pypi_download_cache(package, reason)
+        if cached:
+            return cached
+        return {
+            "source": "pypistats.org",
+            "source_url": f"https://pypistats.org/packages/{package}",
+            "status": "unavailable",
+            "reason": reason,
+        }
+
+
 def github_headers() -> Dict[str, str]:
     headers = {
         "Accept": "application/vnd.github+json",
@@ -340,11 +425,13 @@ def github_headers() -> Dict[str, str]:
     }
     token = os.environ.get("GITHUB_TOKEN")
     if not token:
-        token_path = Path.home() / ".config" / "funasr-ops" / "github_token"
-        try:
-            token = token_path.read_text(encoding="utf-8").strip()
-        except OSError:
-            token = None
+        for token_path in github_token_paths():
+            try:
+                token = token_path.read_text(encoding="utf-8").strip()
+            except OSError:
+                continue
+            if token:
+                break
     if not token:
         try:
             completed = subprocess.run(
@@ -362,6 +449,13 @@ def github_headers() -> Dict[str, str]:
     if token:
         headers["Authorization"] = f"Bearer {token}"
     return headers
+
+
+def github_token_paths() -> Sequence[Path]:
+    return (
+        Path.home() / ".config" / "funasr-ops" / "github_token",
+        OPS_GITHUB_TOKEN_PATH,
+    )
 
 
 def collect_github_repo_metrics(repo: str) -> Dict[str, Any]:
@@ -407,6 +501,25 @@ def summarize_commit_checks(repo: str, head_sha: str) -> Dict[str, Any]:
         github_headers(),
     )
     check_runs = check_runs_payload.get("check_runs", [])
+    latest_check_runs: Dict[tuple[str, Any], tuple[tuple[str, int, int], Dict[str, Any]]] = {}
+    for position, check_run in enumerate(check_runs):
+        app = check_run.get("app") or {}
+        key = (str(check_run.get("name") or ""), app.get("slug") or app.get("id"))
+        timestamp = str(
+            check_run.get("completed_at")
+            or check_run.get("started_at")
+            or check_run.get("created_at")
+            or ""
+        )
+        try:
+            run_id = int(check_run.get("id") or 0)
+        except (TypeError, ValueError):
+            run_id = 0
+        rank = (timestamp, run_id, -position)
+        previous = latest_check_runs.get(key)
+        if previous is None or rank > previous[0]:
+            latest_check_runs[key] = (rank, check_run)
+    check_runs = [entry[1] for entry in latest_check_runs.values()]
     failed_check_runs = []
     pending_check_runs = []
     for check_run in check_runs:
@@ -487,6 +600,48 @@ def classify_known_external_failure(spec: str, checks: Dict[str, Any]) -> Option
     return None
 
 
+def summarize_pull_request_reviews(repo: str, pr_number: int) -> Dict[str, Any]:
+    base_url = f"https://api.github.com/repos/{repo}/pulls/{pr_number}/reviews?per_page=100"
+    reviews = []
+    page = 1
+    while True:
+        url = base_url if page == 1 else f"{base_url}&page={page}"
+        page_reviews = fetch_json(url, github_headers())
+        if not isinstance(page_reviews, list):
+            break
+        reviews.extend(page_reviews)
+        if len(page_reviews) < 100:
+            break
+        page += 1
+
+    latest_by_reviewer: Dict[str, str] = {}
+    for review in reviews:
+        reviewer = (review.get("user") or {}).get("login")
+        state = str(review.get("state") or "").upper()
+        if reviewer and state in {"APPROVED", "CHANGES_REQUESTED", "DISMISSED"}:
+            latest_by_reviewer[str(reviewer)] = state
+
+    approvals = sorted(
+        reviewer for reviewer, state in latest_by_reviewer.items() if state == "APPROVED"
+    )
+    changes_requested_by = sorted(
+        reviewer
+        for reviewer, state in latest_by_reviewer.items()
+        if state == "CHANGES_REQUESTED"
+    )
+    if changes_requested_by:
+        state = "changes_requested"
+    elif approvals:
+        state = "approved"
+    else:
+        state = "none"
+    return {
+        "state": state,
+        "approvals": approvals,
+        "changes_requested_by": changes_requested_by,
+    }
+
+
 def recommend_integration_action(
     pull_request: Dict[str, Any],
     checks: Dict[str, Any],
@@ -494,8 +649,11 @@ def recommend_integration_action(
     known_external_failure_action: Optional[str] = None,
     known_review_gate_action: Optional[str] = None,
     known_assisted_review_reason: Optional[str] = None,
+    review_state: Optional[str] = None,
 ) -> str:
     if pull_request.get("state") != "open":
+        if pull_request.get("merged_at"):
+            return "merged / done"
         return "archive"
     if pull_request.get("draft"):
         return "finish draft"
@@ -547,12 +705,45 @@ def recommend_integration_action(
         and mergeable_state in {"blocked", "clean", "unknown", "unstable", None}
     ):
         return "wait for maintainer review"
+    if review_state == "changes_requested":
+        return "address review feedback"
+    if review_state == "approved":
+        return "wait for maintainer merge"
 
     if check_state in {"success", "unknown"} and mergeable_state == "clean":
         return "request review"
     if check_state in {"success", "unknown"} and mergeable_state in {"blocked", "unstable"}:
         return "review gate"
     return "inspect"
+
+
+def display_mergeable_state(integration: Dict[str, Any]) -> str:
+    mergeable_state = integration.get("mergeable_state")
+    mergeable = integration.get("mergeable")
+    checks = integration.get("checks") or {}
+    next_action = integration.get("next_action") or "inspect"
+    has_check_blocker = bool(checks.get("failed_check_runs") or checks.get("pending_check_runs"))
+    if (
+        checks.get("state") in {"success", "unknown"}
+        and not has_check_blocker
+        and next_action == "wait for maintainer review"
+        and (
+            integration.get("known_review_gate_reason")
+            or integration.get("known_assisted_review_reason")
+        )
+        and (mergeable is True or mergeable_state in {"blocked", "unknown", "unstable", None})
+    ):
+        return "review-gated"
+
+    if mergeable_state and mergeable_state != "unknown":
+        return str(mergeable_state)
+
+    if isinstance(mergeable, bool):
+        return "mergeable" if mergeable else "not mergeable"
+    if mergeable and str(mergeable).lower() not in {"unknown", "none"}:
+        return str(mergeable).lower()
+
+    return str(mergeable_state or mergeable or "unknown")
 
 
 def collect_pull_request_metrics(spec: str, now: Optional[dt.datetime] = None) -> Dict[str, Any]:
@@ -574,6 +765,22 @@ def collect_pull_request_metrics(spec: str, now: Optional[dt.datetime] = None) -
     )
     known_review_gate = KNOWN_REVIEW_GATES.get(spec) or {}
     known_assisted_review = KNOWN_ASSISTED_REVIEW_REQUESTS.get(spec) or {}
+    recommendation_args = (
+        pull_request,
+        checks,
+        known_external_failure_reason,
+        known_external_failure_action,
+        known_review_gate.get("action"),
+        known_assisted_review.get("reason"),
+    )
+    review_summary = {"state": "not_checked", "approvals": [], "changes_requested_by": []}
+    next_action = recommend_integration_action(*recommendation_args)
+    if next_action in {"request review", "review gate"}:
+        review_summary = summarize_pull_request_reviews(repo, pr_number)
+        next_action = recommend_integration_action(
+            *recommendation_args,
+            review_state=review_summary["state"],
+        )
     updated_at = pull_request.get("updated_at")
     return {
         "pr": f"{repo}#{pr_number}",
@@ -598,14 +805,10 @@ def collect_pull_request_metrics(spec: str, now: Optional[dt.datetime] = None) -
         "known_external_failure_action": known_external_failure_action,
         "known_review_gate_reason": known_review_gate.get("reason"),
         "known_assisted_review_reason": known_assisted_review.get("reason"),
-        "next_action": recommend_integration_action(
-            pull_request,
-            checks,
-            known_external_failure_reason,
-            known_external_failure_action,
-            known_review_gate.get("action"),
-            known_assisted_review.get("reason"),
-        ),
+        "review_state": review_summary["state"],
+        "approvals": review_summary["approvals"],
+        "changes_requested_by": review_summary["changes_requested_by"],
+        "next_action": next_action,
     }
 
 
@@ -674,6 +877,7 @@ def collect_metrics(repo: str, package: str) -> Dict[str, Any]:
             "version": pypi.get("info", {}).get("version"),
             "summary": pypi.get("info", {}).get("summary"),
             "project_url": pypi.get("info", {}).get("project_url"),
+            "downloads": collect_pypi_download_metrics(package),
         },
     }
     return metrics
@@ -716,8 +920,25 @@ def collect_ecosystem_metrics(
             "version": pypi.get("info", {}).get("version"),
             "summary": pypi.get("info", {}).get("summary"),
             "project_url": pypi.get("info", {}).get("project_url"),
+            "downloads": collect_pypi_download_metrics(package),
         },
     }
+
+
+def format_pypi_downloads(pypi: Dict[str, Any]) -> str:
+    downloads = pypi.get("downloads") or {}
+    if downloads.get("status") in {"available", "stale_available"}:
+        cache_note = ""
+        if downloads.get("status") == "stale_available":
+            cache_note = f"; cached after live API failure: {downloads.get('reason')}"
+        return (
+            f"- PyPI downloads: **{downloads.get('downloads_last_7_days', 0):,}** last 7 days; "
+            f"**{downloads.get('downloads_last_30_days', 0):,}** last 30 days "
+            f"(through {downloads.get('latest_date')}, {downloads.get('source_url')}{cache_note})"
+        )
+    if downloads.get("status") == "unavailable":
+        return f"- PyPI downloads: unavailable via {downloads.get('source', 'PyPIStats')} ({downloads.get('reason')})"
+    return "- PyPI downloads: n/a"
 
 
 def format_markdown(metrics: Dict[str, Any], star_goal: int) -> str:
@@ -736,6 +957,7 @@ def format_markdown(metrics: Dict[str, Any], star_goal: int) -> str:
         if github.get("open_pull_requests") is not None
         else "- Open pull requests: n/a",
         f"- PyPI package: **{pypi.get('package')} {pypi.get('version')}**",
+        format_pypi_downloads(pypi),
         f"- Last GitHub push: `{github.get('pushed_at')}`",
         "",
         "## Links",
@@ -761,6 +983,7 @@ def format_ecosystem_markdown(metrics: Dict[str, Any]) -> str:
         f"- Target date: **{ecosystem['target_date']}** ({ecosystem['days_remaining']:,} days remaining)",
         f"- Required daily average: **{ecosystem['required_daily_average']:,}** stars/day",
         f"- PyPI package: **{pypi.get('package')} {pypi.get('version')}**",
+        format_pypi_downloads(pypi),
         "",
         "## Repositories",
         "",
@@ -811,7 +1034,7 @@ def format_integration_markdown(metrics: Dict[str, Any]) -> str:
             f"{repo_stars} | "
             f"{repo_forks} | "
             f"{integration.get('state')} | "
-            f"{integration.get('mergeable_state') or integration.get('mergeable')} | "
+            f"{display_mergeable_state(integration)} | "
             f"{checks.get('state')} | "
             f"{failed_count:,} | "
             f"{pending_count:,} | "
@@ -867,7 +1090,11 @@ def format_integration_markdown(metrics: Dict[str, Any]) -> str:
     if manual_handoff_integrations:
         lines.extend(["", "## Manual handoff gates", ""])
         for integration in manual_handoff_integrations:
-            reason = integration.get("known_review_gate_reason") or "manual action required"
+            reason = (
+                integration.get("known_review_gate_reason")
+                or integration.get("known_external_failure_reason")
+                or "manual action required"
+            )
             lines.append(
                 f"- [{integration['pr']}]({integration.get('html_url')}): "
                 f"{integration.get('next_action') or 'inspect'}; {reason}"
@@ -947,8 +1174,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--repos",
         nargs="+",
-        default=DEFAULT_ECOSYSTEM_REPOS,
-        help="GitHub repositories for --ecosystem mode",
+        default=None,
+        help="GitHub repositories for --ecosystem or --issues mode; multiple explicit repos imply --ecosystem",
     )
     parser.add_argument("--ecosystem", action="store_true", help="Collect the four-repository FunASR ecosystem")
     parser.add_argument("--integrations", action="store_true", help="Collect tracked external integration PRs")
@@ -975,14 +1202,16 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    repos = args.repos or DEFAULT_ECOSYSTEM_REPOS
+    ecosystem_mode = args.ecosystem or bool(args.repos and len(args.repos) > 1)
     try:
         if args.integrations:
             metrics = collect_integration_metrics(args.integration_prs)
         elif args.issues:
-            metrics = collect_issue_metrics(args.repos)
-        elif args.ecosystem:
+            metrics = collect_issue_metrics(repos)
+        elif ecosystem_mode:
             metrics = collect_ecosystem_metrics(
-                args.repos,
+                repos,
                 args.pypi_package,
                 args.baseline_stars,
                 args.target_additional_stars,
@@ -1000,7 +1229,7 @@ def main() -> int:
         print(format_integration_markdown(metrics), end="")
     elif args.issues:
         print(format_issue_markdown(metrics), end="")
-    elif args.ecosystem:
+    elif ecosystem_mode:
         print(format_ecosystem_markdown(metrics), end="")
     else:
         print(format_markdown(metrics, args.star_goal), end="")

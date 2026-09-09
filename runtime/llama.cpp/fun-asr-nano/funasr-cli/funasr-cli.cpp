@@ -28,6 +28,7 @@
 #include "funasr_audio.h"
 // built-in FSMN-VAD front end (single-binary --vad segmentation)
 #include "funasr_vad.h"
+#include "funasr_srt.h"
 #include <utility>
 
 // ======================= kaldi fbank + LFR =======================
@@ -166,9 +167,18 @@ static int decode_batch(llama_context*ctx,int n,llama_token*tok,float*embd,int n
     int r=llama_decode(ctx,b); n_past+=n; return r;
 }
 
+static void print_usage(const char*argv0){
+    fprintf(stderr,
+        "usage: %s --enc enc.gguf -m llm.gguf -a audio.wav"
+        " [-n npred] [--chunk sec]"
+        " [--vad fsmn-vad.gguf [--vad-maxseg ms]]"
+        " [--srt] [--rep R]\n", argv0);
+}
+
 int main(int argc,char**argv){
     std::string enc_path,llm_path,wav_path,vad_path; int npred=512; double chunk_sec=0; float rep=1.0f;
     int vad_maxseg=30000;
+    bool srt_mode=false;
     for(int i=1;i<argc;i++){
         if(!strcmp(argv[i],"--enc")&&i+1<argc)enc_path=argv[++i];
         else if(!strcmp(argv[i],"-m")&&i+1<argc)llm_path=argv[++i];
@@ -177,13 +187,15 @@ int main(int argc,char**argv){
         else if(!strcmp(argv[i],"--chunk")&&i+1<argc)chunk_sec=atof(argv[++i]);
         else if(!strcmp(argv[i],"--vad")&&i+1<argc)vad_path=argv[++i];
         else if(!strcmp(argv[i],"--vad-maxseg")&&i+1<argc)vad_maxseg=atoi(argv[++i]);
+        else if(!strcmp(argv[i],"--srt"))srt_mode=true;
         else if(!strcmp(argv[i],"--rep")&&i+1<argc)rep=atof(argv[++i]);
-        else {fprintf(stderr,"usage: %s --enc enc.gguf -m llm.gguf -a audio.wav [-n npred] [--chunk sec] [--vad fsmn-vad.gguf [--vad-maxseg ms]]\n",argv[0]);return 1;}
+        else { print_usage(argv[0]); return 1; }
     }
-    if(enc_path.empty()||llm_path.empty()||wav_path.empty()){fprintf(stderr,"missing args\n");return 1;}
+    if(enc_path.empty()||llm_path.empty()||wav_path.empty()){fprintf(stderr,"missing args\n");print_usage(argv[0]);return 1;}
 
     std::vector<float> wav;
     if(!funasr_load_audio_16k_mono(wav_path.c_str(),wav)){fprintf(stderr,"failed to read audio\n");return 1;}
+    ggml_time_init(); // Required before ggml_time_us() on Windows.
     int64_t t0=ggml_time_us();
 
     enc_model em; if(!load_enc(enc_path.c_str(),em))return 1;
@@ -196,7 +208,7 @@ int main(int argc,char**argv){
     llama_context*ctx=llama_init_from_model(model,cp);
     if(!ctx){fprintf(stderr,"failed to create llama context\n");llama_model_free(model);return 1;}
     auto sp=llama_sampler_chain_default_params(); llama_sampler*smpl=llama_sampler_chain_init(sp);
-    if(rep!=1.0f) llama_sampler_chain_add(smpl,llama_sampler_init_penalties(256,rep,0.0f,0.0f));
+    if(rep!=1.0f) llama_sampler_chain_add(smpl,llama_sampler_init_penalties(llama_vocab_n_tokens(vocab),256,rep,0.0f,0.0f));
     llama_sampler_chain_add(smpl,llama_sampler_init_greedy());
 
     const char*prefix="<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>user\n语音转写：";
@@ -219,10 +231,13 @@ int main(int argc,char**argv){
         int chunk_n = chunk_sec > 0 ? std::max(1, (int)(chunk_sec*16000)) : (int)wav.size();
         for(size_t off=0; off<wav.size(); off+=chunk_n) wins.push_back({(int)off,(int)std::min((size_t)chunk_n,wav.size()-off)});
     }
-    std::string full;
+
+    int srt_idx = 0;
     for (auto& w : wins) {
         int off = w.first, len = w.second;
         if (len < WINLEN) continue;                    // too short for one frame
+        int start_ms = (int)((int64_t)off * 1000 / 16000);
+        int end_ms   = (int)((int64_t)(off + len) * 1000 / 16000);
         std::vector<float> seg(wav.begin()+off, wav.begin()+off+len);
         int T=0; auto fbank=compute_fbank(seg,T);
         int D=0; auto adp=run_encoder(em,fbank,T,560,D);
@@ -233,16 +248,32 @@ int main(int argc,char**argv){
         decode_batch(ctx,pre.size(),pre.data(),nullptr,0,n_past,false);
         decode_batch(ctx,n_aud,nullptr,adp.data(),D,n_past,false);
         decode_batch(ctx,suf.size(),suf.data(),nullptr,0,n_past,true);
+
+        // In SRT mode, buffer tokens and print the whole entry via format_srt_line.
+        // In normal mode, stream tokens directly (original behavior, no per-segment newline).
+        std::string seg_text;
         llama_token tk=llama_sampler_sample(smpl,ctx,-1);
         for(int i=0;i<npred;i++){
             if(llama_vocab_is_eog(vocab,tk))break;
             char buf[256]; int k=llama_token_to_piece(vocab,tk,buf,sizeof(buf),0,true);
-            if(k>0) full.append(buf,k);
+            if(k>0){
+                seg_text.append(buf, k);
+            }
             decode_batch(ctx,1,&tk,nullptr,0,n_past,true);
             tk=llama_sampler_sample(smpl,ctx,-1);
         }
+
+        if(srt_mode){
+            if (seg_text != "/sil") {
+                srt_idx++;
+                format_srt_line(srt_idx, start_ms, end_ms, seg_text);
+            }
+        } else {
+            printf("%s", seg_text.c_str());
+        }
+        fflush(stdout);
     }
-    printf("%s\n", full.c_str());
+    if(!srt_mode) printf("\n");
     int64_t t2=ggml_time_us();
     fprintf(stderr,"[done] %.2fs ; chunk=%.0fs\n",(t2-t0)/1e6, chunk_sec);
     llama_sampler_free(smpl); llama_free(ctx); llama_model_free(model);

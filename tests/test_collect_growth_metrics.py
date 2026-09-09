@@ -19,13 +19,84 @@ def load_growth_metrics_module():
 def test_default_integration_prs_include_sglang_omni_fun_asr():
     module = load_growth_metrics_module()
 
-    assert "sgl-project/sglang-omni#898" in module.DEFAULT_INTEGRATION_PRS
+    assert "sgl-project/sglang-omni#1460" in module.DEFAULT_INTEGRATION_PRS
+    assert "sgl-project/sglang-omni#1078" not in module.DEFAULT_INTEGRATION_PRS
+    assert "sgl-project/sglang-omni#898" not in module.DEFAULT_INTEGRATION_PRS
+
+
+def test_sglang_omni_fun_asr_ci_gate_waits_for_pr_author_opt_in():
+    module = load_growth_metrics_module()
+
+    failure = module.KNOWN_EXTERNAL_CHECK_FAILURES["sgl-project/sglang-omni#1460"]
+
+    assert failure["failed_check_names"] == {"omni-ci-gate"}
+    assert failure["action"] == "wait for PR author CI opt-in"
+    assert "`/tag-and-rerun-ci fun-asr`" in failure["reason"]
+    assert "before setup or ASR GPU tests" in failure["reason"]
+    assert failure["action"] in module.MANUAL_HANDOFF_ACTIONS
+
+
+def test_summarize_commit_checks_uses_latest_run_for_each_check_name(monkeypatch):
+    module = load_growth_metrics_module()
+
+    def fake_fetch_json(url, headers=None):
+        if url.endswith("/commits/head/status"):
+            return {"state": "success", "statuses": []}
+        if url.endswith("/commits/head/check-runs?per_page=100"):
+            return {
+                "total_count": 4,
+                "check_runs": [
+                    {
+                        "id": 4,
+                        "name": "build-docs",
+                        "status": "completed",
+                        "conclusion": "success",
+                        "completed_at": "2026-08-10T22:46:02Z",
+                    },
+                    {
+                        "id": 3,
+                        "name": "omni-ci-gate",
+                        "status": "completed",
+                        "conclusion": "failure",
+                        "completed_at": "2026-08-10T22:45:59Z",
+                    },
+                    {
+                        "id": 2,
+                        "name": "build-docs",
+                        "status": "completed",
+                        "conclusion": "cancelled",
+                        "completed_at": "2026-08-10T22:45:58Z",
+                    },
+                    {
+                        "id": 1,
+                        "name": "omni-ci-gate",
+                        "status": "completed",
+                        "conclusion": "cancelled",
+                        "completed_at": "2026-08-10T22:45:57Z",
+                    },
+                ],
+            }
+        raise AssertionError(f"unexpected URL: {url}")
+
+    monkeypatch.setattr(module, "fetch_json", fake_fetch_json)
+
+    checks = module.summarize_commit_checks("sgl-project/sglang-omni", "head")
+
+    assert checks["total_check_runs"] == 4
+    assert checks["failed_check_runs"] == [
+        {"name": "omni-ci-gate", "conclusion": "failure", "url": None}
+    ]
 
 
 def test_github_headers_falls_back_to_gh_auth_token(monkeypatch):
     module = load_growth_metrics_module()
     monkeypatch.delenv("GITHUB_TOKEN", raising=False)
     monkeypatch.setenv("HOME", "/tmp/funasr-growth-metrics-no-token-home")
+    monkeypatch.setattr(
+        module,
+        "OPS_GITHUB_TOKEN_PATH",
+        Path("/tmp/funasr-growth-metrics-missing-ops-token"),
+    )
 
     def fake_run(args, **kwargs):
         assert args == ["gh", "auth", "token"]
@@ -56,25 +127,44 @@ def test_github_headers_reads_funasr_ops_token_file(monkeypatch, tmp_path):
     assert headers["Authorization"] == "Bearer file-token"
 
 
+def test_github_headers_reads_configured_ops_token_file(monkeypatch, tmp_path):
+    module = load_growth_metrics_module()
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.setenv("HOME", str(tmp_path / "empty-home"))
+    ops_token_path = tmp_path / "ops" / "github_token"
+    ops_token_path.parent.mkdir(parents=True)
+    ops_token_path.write_text("ops-file-token\n")
+    monkeypatch.setattr(module, "OPS_GITHUB_TOKEN_PATH", ops_token_path)
+
+    def fake_run(args, **kwargs):
+        raise AssertionError("gh auth token should not be called when ops token exists")
+
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
+
+    headers = module.github_headers()
+
+    assert headers["Authorization"] == "Bearer ops-file-token"
+
+
 def test_default_integration_prs_include_high_visibility_external_queue():
     module = load_growth_metrics_module()
 
     expected_prs = {
-        "infiniflow/ragflow#16473",
-        "pipecat-ai/pipecat#4844",
+        "huggingface/optimum-intel#1874",
         "TEN-framework/ten-framework#2191",
-        "activepieces/activepieces#13985",
         "Uberi/speech_recognition#903",
     }
 
     assert expected_prs.issubset(set(module.DEFAULT_INTEGRATION_PRS))
+    assert "activepieces/activepieces#13985" not in module.DEFAULT_INTEGRATION_PRS
+    assert "infiniflow/ragflow#16473" not in module.DEFAULT_INTEGRATION_PRS
+    assert "pipecat-ai/pipecat#4844" not in module.DEFAULT_INTEGRATION_PRS
 
 
 def test_default_integration_prs_include_new_growth_lanes():
     module = load_growth_metrics_module()
 
     expected_prs = {
-        "Significant-Gravitas/AutoGPT#13500",
         "huggingface/speech-to-speech#319",
         "run-llama/llama_index#21958",
         "run-llama/llama_index#21996",
@@ -82,21 +172,22 @@ def test_default_integration_prs_include_new_growth_lanes():
         "mudler/LocalAI#10090",
         "agno-agi/agno#8501",
         "GetStream/Vision-Agents#606",
-        "ai4s-research/awesome-ai-for-science#69",
     }
 
     assert expected_prs.issubset(set(module.DEFAULT_INTEGRATION_PRS))
+    assert "Significant-Gravitas/AutoGPT#13500" not in module.DEFAULT_INTEGRATION_PRS
+    assert "ai4s-research/awesome-ai-for-science#69" not in module.DEFAULT_INTEGRATION_PRS
 
 
 def test_default_integration_prs_include_video_discovery_lanes():
     module = load_growth_metrics_module()
 
     expected_prs = {
-        "tmoroney/auto-subs#629",
         "mahseema/awesome-ai-tools#1689",
     }
 
     assert expected_prs.issubset(set(module.DEFAULT_INTEGRATION_PRS))
+    assert "tmoroney/auto-subs#629" not in module.DEFAULT_INTEGRATION_PRS
 
 
 def test_default_integration_prs_include_voice_agent_and_ml_discovery_lanes():
@@ -114,10 +205,8 @@ def test_default_integration_prs_include_high_star_awesome_discovery_lanes():
     module = load_growth_metrics_module()
 
     expected_prs = {
-        "vinta/awesome-python#3246",
         "fighting41love/funNLP#478",
         "josephmisiti/awesome-machine-learning#1339",
-        "RVC-Boss/GPT-SoVITS#2801",
         "jobbole/awesome-python-cn#141",
         "ChristosChristofidis/awesome-deep-learning#317",
         "Hannibal046/Awesome-LLM#623",
@@ -128,11 +217,13 @@ def test_default_integration_prs_include_high_star_awesome_discovery_lanes():
         "bharathgs/Awesome-pytorch-list#164",
         "owainlewis/awesome-artificial-intelligence#243",
         "steven2358/awesome-generative-ai#821",
-        "WangRongsheng/awesome-LLM-resources#162",
         "crownpku/Awesome-Chinese-NLP#32",
     }
 
     assert expected_prs.issubset(set(module.DEFAULT_INTEGRATION_PRS))
+    assert "WangRongsheng/awesome-LLM-resources#162" not in module.DEFAULT_INTEGRATION_PRS
+    assert "vinta/awesome-python#3246" not in module.DEFAULT_INTEGRATION_PRS
+    assert "RVC-Boss/GPT-SoVITS#2801" not in module.DEFAULT_INTEGRATION_PRS
 
 
 def test_high_star_awesome_discovery_lanes_wait_for_maintainer_review():
@@ -153,11 +244,11 @@ def test_high_star_awesome_discovery_lanes_wait_for_maintainer_review():
         "bharathgs/Awesome-pytorch-list#164",
         "owainlewis/awesome-artificial-intelligence#243",
         "steven2358/awesome-generative-ai#821",
-        "WangRongsheng/awesome-LLM-resources#162",
         "crownpku/Awesome-Chinese-NLP#32",
     }
 
     assert expected_prs.issubset(set(module.KNOWN_ASSISTED_REVIEW_REQUESTS))
+    assert "WangRongsheng/awesome-LLM-resources#162" not in module.KNOWN_ASSISTED_REVIEW_REQUESTS
 
 
 def test_default_integration_prs_include_missing_validated_discovery_lanes():
@@ -171,10 +262,10 @@ def test_default_integration_prs_include_missing_validated_discovery_lanes():
         "Osmantic/ODS#1639",
         "faroit/awesome-python-scientific-audio#85",
         "joewongjc/type4me#207",
-        "ga642381/speech-trident#31",
     }
 
     assert expected_prs.issubset(set(module.DEFAULT_INTEGRATION_PRS))
+    assert "ga642381/speech-trident#31" not in module.DEFAULT_INTEGRATION_PRS
 
 
 def test_missing_validated_discovery_lanes_wait_for_maintainer_review():
@@ -194,6 +285,16 @@ def test_missing_validated_discovery_lanes_wait_for_maintainer_review():
     assert expected_prs.issubset(set(module.KNOWN_ASSISTED_REVIEW_REQUESTS))
 
 
+def test_type4me_review_wait_reflects_completed_qwen3_smoke():
+    module = load_growth_metrics_module()
+
+    reason = module.KNOWN_ASSISTED_REVIEW_REQUESTS["joewongjc/type4me#207"]["reason"]
+
+    assert "Qwen3-only ASR smoke evidence posted" in reason
+    assert "keep draft" not in reason
+    assert "until Qwen3-only ASR smoke test" not in reason
+
+
 def test_default_integration_prs_include_mcp_discovery_lanes():
     module = load_growth_metrics_module()
 
@@ -204,6 +305,7 @@ def test_default_integration_prs_include_speech_server_lanes():
     module = load_growth_metrics_module()
 
     expected_prs = {
+        "BerriAI/litellm-docs#610",
         "speaches-ai/speaches#658",
         "getpaseo/paseo#1634",
     }
@@ -257,23 +359,23 @@ def test_collect_ecosystem_metrics_sums_repositories_and_target_gap(monkeypatch)
             "pushed_at": "2026-06-30T01:48:35Z",
             "html_url": "https://github.com/modelscope/FunASR",
         },
-        "FunAudioLLM/Fun-ASR": {
+        "QwenAudio/Fun-ASR": {
             "stargazers_count": 1318,
             "forks_count": 120,
             "subscribers_count": 20,
             "open_issues_count": 0,
             "default_branch": "main",
             "pushed_at": "2026-06-29T13:24:05Z",
-            "html_url": "https://github.com/FunAudioLLM/Fun-ASR",
+            "html_url": "https://github.com/QwenAudio/Fun-ASR",
         },
-        "FunAudioLLM/SenseVoice": {
+        "QwenAudio/SenseVoice": {
             "stargazers_count": 8718,
             "forks_count": 800,
             "subscribers_count": 90,
             "open_issues_count": 0,
             "default_branch": "main",
             "pushed_at": "2026-06-29T13:24:06Z",
-            "html_url": "https://github.com/FunAudioLLM/SenseVoice",
+            "html_url": "https://github.com/QwenAudio/SenseVoice",
         },
         "modelscope/FunClip": {
             "stargazers_count": 5872,
@@ -299,7 +401,7 @@ def test_collect_ecosystem_metrics_sums_repositories_and_target_gap(monkeypatch)
     monkeypatch.setattr(module, "fetch_json", fake_fetch_json)
 
     metrics = module.collect_ecosystem_metrics(
-        ["modelscope/FunASR", "FunAudioLLM/Fun-ASR", "FunAudioLLM/SenseVoice", "modelscope/FunClip"],
+        ["modelscope/FunASR", "QwenAudio/Fun-ASR", "QwenAudio/SenseVoice", "modelscope/FunClip"],
         package="funasr",
         baseline_stars=31224,
         target_additional_stars=20000,
@@ -311,10 +413,90 @@ def test_collect_ecosystem_metrics_sums_repositories_and_target_gap(monkeypatch)
     assert metrics["ecosystem"]["remaining_to_target"] == 16602
     assert [repo["repo"] for repo in metrics["ecosystem"]["repositories"]] == [
         "modelscope/FunASR",
-        "FunAudioLLM/Fun-ASR",
-        "FunAudioLLM/SenseVoice",
+        "QwenAudio/Fun-ASR",
+        "QwenAudio/SenseVoice",
         "modelscope/FunClip",
     ]
+
+
+def test_collect_pypi_download_metrics_sums_recent_windows(monkeypatch, tmp_path):
+    module = load_growth_metrics_module()
+    monkeypatch.setattr(module, "DEFAULT_PYPI_DOWNLOAD_CACHE", tmp_path / "pypi-downloads-funasr.json")
+
+    def fake_fetch_json(url, headers=None):
+        assert url == "https://pypistats.org/api/packages/funasr/overall?mirrors=false"
+        return {
+            "data": [
+                {
+                    "category": "without_mirrors",
+                    "date": f"2026-07-{day:02d}",
+                    "downloads": day,
+                }
+                for day in range(1, 32)
+            ]
+        }
+
+    monkeypatch.setattr(module, "fetch_json", fake_fetch_json)
+
+    metrics = module.collect_pypi_download_metrics("funasr")
+
+    assert metrics == {
+        "source": "pypistats.org",
+        "source_url": "https://pypistats.org/packages/funasr",
+        "latest_date": "2026-07-31",
+        "downloads_last_7_days": sum(range(25, 32)),
+        "downloads_last_30_days": sum(range(2, 32)),
+        "status": "available",
+    }
+    cached = json.loads((tmp_path / "pypi-downloads-funasr.json").read_text())
+    assert cached["package"] == "funasr"
+    assert cached["metrics"] == metrics
+
+
+def test_collect_pypi_download_metrics_uses_cache_after_live_failure(monkeypatch, tmp_path):
+    module = load_growth_metrics_module()
+    cache_path = tmp_path / "pypi-downloads-funasr.json"
+    monkeypatch.setattr(module, "DEFAULT_PYPI_DOWNLOAD_CACHE", cache_path)
+    cache_path.write_text(json.dumps({
+        "package": "funasr",
+        "metrics": {
+            "source": "pypistats.org",
+            "source_url": "https://pypistats.org/packages/funasr",
+            "latest_date": "2026-07-21",
+            "downloads_last_7_days": 116407,
+            "downloads_last_30_days": 442556,
+            "status": "available",
+        },
+    }))
+
+    def fake_fetch_json(url, headers=None):
+        raise RuntimeError("HTTP 429")
+
+    monkeypatch.setattr(module, "fetch_json", fake_fetch_json)
+
+    metrics = module.collect_pypi_download_metrics("funasr")
+
+    assert metrics["status"] == "stale_available"
+    assert metrics["downloads_last_7_days"] == 116407
+    assert metrics["downloads_last_30_days"] == 442556
+    assert metrics["cache_path"] == str(cache_path)
+    assert "HTTP 429" in metrics["reason"]
+
+
+def test_collect_pypi_download_metrics_reports_unavailable_without_cache(monkeypatch, tmp_path):
+    module = load_growth_metrics_module()
+    monkeypatch.setattr(module, "DEFAULT_PYPI_DOWNLOAD_CACHE", tmp_path / "missing-cache.json")
+
+    def fake_fetch_json(url, headers=None):
+        raise RuntimeError("HTTP 429")
+
+    monkeypatch.setattr(module, "fetch_json", fake_fetch_json)
+
+    metrics = module.collect_pypi_download_metrics("funasr")
+
+    assert metrics["status"] == "unavailable"
+    assert metrics["source"] == "pypistats.org"
+    assert "HTTP 429" in metrics["reason"]
 
 
 def test_collect_ecosystem_metrics_calculates_daily_target(monkeypatch):
@@ -327,8 +509,8 @@ def test_collect_ecosystem_metrics_calculates_daily_target(monkeypatch):
             repo = url.removeprefix("https://api.github.com/repos/")
             stars = {
                 "modelscope/FunASR": 18715,
-                "FunAudioLLM/Fun-ASR": 1318,
-                "FunAudioLLM/SenseVoice": 8718,
+                "QwenAudio/Fun-ASR": 1318,
+                "QwenAudio/SenseVoice": 8718,
                 "modelscope/FunClip": 5872,
             }[repo]
             return {
@@ -347,7 +529,7 @@ def test_collect_ecosystem_metrics_calculates_daily_target(monkeypatch):
     monkeypatch.setattr(module, "fetch_json", fake_fetch_json)
 
     metrics = module.collect_ecosystem_metrics(
-        ["modelscope/FunASR", "FunAudioLLM/Fun-ASR", "FunAudioLLM/SenseVoice", "modelscope/FunClip"],
+        ["modelscope/FunASR", "QwenAudio/Fun-ASR", "QwenAudio/SenseVoice", "modelscope/FunClip"],
         package="funasr",
         baseline_stars=31224,
         target_additional_stars=20000,
@@ -358,6 +540,78 @@ def test_collect_ecosystem_metrics_calculates_daily_target(monkeypatch):
     assert metrics["ecosystem"]["target_date"] == "2026-09-30"
     assert metrics["ecosystem"]["days_remaining"] == 92
     assert metrics["ecosystem"]["required_daily_average"] == 181
+
+
+def test_format_ecosystem_markdown_marks_cached_pypi_download_windows():
+    module = load_growth_metrics_module()
+
+    metrics = {
+        "collected_at_utc": "2026-07-23T00:00:00+00:00",
+        "ecosystem": {
+            "repositories": [],
+            "total_stars": 35787,
+            "baseline_stars": 31224,
+            "target_additional_stars": 20000,
+            "added_stars": 4563,
+            "remaining_to_target": 15437,
+            "target_date": "2026-09-30",
+            "days_remaining": 70,
+            "required_daily_average": 221,
+        },
+        "pypi": {
+            "package": "funasr",
+            "version": "1.3.26",
+            "downloads": {
+                "status": "stale_available",
+                "latest_date": "2026-07-21",
+                "downloads_last_7_days": 116407,
+                "downloads_last_30_days": 442556,
+                "source_url": "https://pypistats.org/packages/funasr",
+                "reason": "HTTP 429",
+            },
+        },
+    }
+
+    output = module.format_ecosystem_markdown(metrics)
+
+    assert "- PyPI downloads: **116,407** last 7 days; **442,556** last 30 days" in output
+    assert "cached after live API failure: HTTP 429" in output
+
+
+def test_format_ecosystem_markdown_includes_pypi_download_windows():
+    module = load_growth_metrics_module()
+
+    metrics = {
+        "collected_at_utc": "2026-07-23T00:00:00+00:00",
+        "ecosystem": {
+            "repositories": [],
+            "total_stars": 35787,
+            "baseline_stars": 31224,
+            "target_additional_stars": 20000,
+            "added_stars": 4563,
+            "remaining_to_target": 15437,
+            "target_date": "2026-09-30",
+            "days_remaining": 70,
+            "required_daily_average": 221,
+        },
+        "pypi": {
+            "package": "funasr",
+            "version": "1.3.26",
+            "project_url": "https://pypi.org/project/funasr/",
+            "downloads": {
+                "status": "available",
+                "latest_date": "2026-07-22",
+                "downloads_last_7_days": 70123,
+                "downloads_last_30_days": 301234,
+                "source_url": "https://pypistats.org/packages/funasr",
+            },
+        },
+    }
+
+    output = module.format_ecosystem_markdown(metrics)
+
+    assert "- PyPI downloads: **70,123** last 7 days; **301,234** last 30 days" in output
+    assert "through 2026-07-22" in output
 
 
 def test_collect_integration_metrics_summarizes_pull_request_checks(monkeypatch):
@@ -476,6 +730,50 @@ def test_collect_integration_metrics_classifies_known_external_ci_failure(monkey
     assert integration["next_action"] == "wait for maintainer rerun"
 
 
+def test_collect_integration_metrics_classifies_ray_docs_infra_failure(monkeypatch):
+    module = load_growth_metrics_module()
+
+    def fake_fetch_json(url, headers=None):
+        if url == "https://api.github.com/repos/ray-project/ray/pulls/64053":
+            return {
+                "number": 64053,
+                "title": "docs(serve): add FunASR ASR integration example",
+                "state": "open",
+                "draft": False,
+                "mergeable": True,
+                "mergeable_state": "blocked",
+                "html_url": "https://github.com/ray-project/ray/pull/64053",
+                "updated_at": "2026-07-22T13:46:40Z",
+                "head": {"sha": "9b2a3b3", "ref": "issue-64052"},
+                "base": {"ref": "master"},
+                "user": {"login": "nh-atuan"},
+            }
+        if url == "https://api.github.com/repos/ray-project/ray/commits/9b2a3b3/status":
+            return {
+                "state": "failure",
+                "statuses": [
+                    {"context": "buildkite/microcheck", "state": "failure"},
+                    {"context": "docs/readthedocs.com:anyscale-ray", "state": "failure"},
+                ],
+            }
+        if url == "https://api.github.com/repos/ray-project/ray/commits/9b2a3b3/check-runs?per_page=100":
+            return {"total_count": 0, "check_runs": []}
+        raise AssertionError(f"unexpected URL: {url}")
+
+    monkeypatch.setattr(module, "fetch_json", fake_fetch_json)
+
+    metrics = module.collect_integration_metrics(["ray-project/ray#64053"])
+
+    integration = metrics["integrations"][0]
+    assert integration["checks"]["state"] == "failure"
+    assert integration["known_external_failure_reason"] == (
+        "Current Ray failures are Buildkite/ReadTheDocs gates already triaged; "
+        "the remaining PR-local Black fix is waiting on the contributor branch owner"
+    )
+    assert integration["known_external_failure_action"] == "wait for contributor branch update"
+    assert integration["next_action"] == "wait for contributor branch update"
+
+
 def test_collect_integration_metrics_handles_known_external_ci_aggregate_race(monkeypatch):
     module = load_growth_metrics_module()
 
@@ -520,6 +818,46 @@ def test_collect_integration_metrics_handles_known_external_ci_aggregate_race(mo
     )
     assert integration["known_external_failure_action"] == "wait for maintainer rerun"
     assert integration["next_action"] == "wait for maintainer rerun"
+
+
+def test_collect_integration_metrics_treats_transformers_review_gate_as_passive_wait(monkeypatch):
+    module = load_growth_metrics_module()
+
+    def fake_fetch_json(url, headers=None):
+        if url == "https://api.github.com/repos/huggingface/transformers/pulls/46180":
+            return {
+                "number": 46180,
+                "title": "Add Fun-ASR-Nano model",
+                "state": "open",
+                "draft": False,
+                "mergeable": True,
+                "mergeable_state": "blocked",
+                "html_url": "https://github.com/huggingface/transformers/pull/46180",
+                "updated_at": "2026-07-22T04:24:15Z",
+                "head": {"sha": "5efce76", "ref": "add-fun-asr-nano"},
+                "base": {"ref": "main"},
+                "user": {"login": "LauraGPT"},
+            }
+        if url == "https://api.github.com/repos/huggingface/transformers/commits/5efce76/status":
+            return {"state": "success", "statuses": []}
+        if url == "https://api.github.com/repos/huggingface/transformers/commits/5efce76/check-runs?per_page=100":
+            return {
+                "total_count": 2,
+                "check_runs": [
+                    {"name": "pr-ci / Check code quality", "status": "completed", "conclusion": "success"},
+                    {"name": "pr-ci / PR CI status", "status": "completed", "conclusion": "success"},
+                ],
+            }
+        raise AssertionError(f"unexpected URL: {url}")
+
+    monkeypatch.setattr(module, "fetch_json", fake_fetch_json)
+
+    metrics = module.collect_integration_metrics(["huggingface/transformers#46180"])
+
+    integration = metrics["integrations"][0]
+    assert integration["checks"]["state"] == "success"
+    assert integration["next_action"] == "wait for maintainer review"
+    assert "active maintainer-held review thread" in integration["known_assisted_review_reason"]
 
 
 def test_format_ecosystem_markdown_includes_open_pull_requests():
@@ -583,6 +921,8 @@ def test_collect_integration_metrics_recommends_review_for_clean_success_pr(monk
                     {"name": "validate", "status": "completed", "conclusion": "success"},
                 ],
             }
+        if url == "https://api.github.com/repos/example/clean-pr/pulls/42/reviews?per_page=100":
+            return []
         raise AssertionError(f"unexpected URL: {url}")
 
     monkeypatch.setattr(module, "fetch_json", fake_fetch_json)
@@ -590,6 +930,233 @@ def test_collect_integration_metrics_recommends_review_for_clean_success_pr(monk
     metrics = module.collect_integration_metrics(["example/clean-pr#42"])
 
     assert metrics["integrations"][0]["next_action"] == "request review"
+
+
+def test_collect_integration_metrics_waits_for_merge_after_maintainer_approval(monkeypatch):
+    module = load_growth_metrics_module()
+
+    def fake_fetch_json(url, headers=None):
+        if url == "https://api.github.com/repos/example/approved-pr/pulls/42":
+            return {
+                "number": 42,
+                "title": "Add FunASR",
+                "state": "open",
+                "draft": False,
+                "mergeable": True,
+                "mergeable_state": "clean",
+                "html_url": "https://github.com/example/approved-pr/pull/42",
+                "updated_at": "2026-07-23T04:16:43Z",
+                "head": {"sha": "1dafe5e", "ref": "add-funasr"},
+                "base": {"ref": "main"},
+                "user": {"login": "LauraGPT"},
+            }
+        if url == "https://api.github.com/repos/example/approved-pr/commits/1dafe5e/status":
+            return {"state": "success", "statuses": []}
+        if url == "https://api.github.com/repos/example/approved-pr/commits/1dafe5e/check-runs?per_page=100":
+            return {
+                "total_count": 1,
+                "check_runs": [
+                    {"name": "validate", "status": "completed", "conclusion": "success"},
+                ],
+            }
+        if url == "https://api.github.com/repos/example/approved-pr/pulls/42/reviews?per_page=100":
+            return [
+                {
+                    "id": 123,
+                    "state": "APPROVED",
+                    "submitted_at": "2026-07-23T04:00:00Z",
+                    "user": {"login": "maintainer"},
+                }
+            ]
+        raise AssertionError(f"unexpected URL: {url}")
+
+    monkeypatch.setattr(module, "fetch_json", fake_fetch_json)
+
+    metrics = module.collect_integration_metrics(["example/approved-pr#42"])
+
+    integration = metrics["integrations"][0]
+    assert integration["review_state"] == "approved"
+    assert integration["approvals"] == ["maintainer"]
+    assert integration["next_action"] == "wait for maintainer merge"
+
+
+def test_collect_integration_metrics_surfaces_requested_review_changes(monkeypatch):
+    module = load_growth_metrics_module()
+
+    def fake_fetch_json(url, headers=None):
+        if url == "https://api.github.com/repos/example/reviewed-pr/pulls/42":
+            return {
+                "number": 42,
+                "title": "Add FunASR",
+                "state": "open",
+                "draft": False,
+                "mergeable": True,
+                "mergeable_state": "clean",
+                "html_url": "https://github.com/example/reviewed-pr/pull/42",
+                "updated_at": "2026-07-23T04:16:43Z",
+                "head": {"sha": "824c3c5", "ref": "add-funasr"},
+                "base": {"ref": "main"},
+                "user": {"login": "LauraGPT"},
+            }
+        if url == "https://api.github.com/repos/example/reviewed-pr/commits/824c3c5/status":
+            return {"state": "success", "statuses": []}
+        if url == "https://api.github.com/repos/example/reviewed-pr/commits/824c3c5/check-runs?per_page=100":
+            return {
+                "total_count": 1,
+                "check_runs": [
+                    {"name": "validate", "status": "completed", "conclusion": "success"},
+                ],
+            }
+        if url == "https://api.github.com/repos/example/reviewed-pr/pulls/42/reviews?per_page=100":
+            return [
+                {
+                    "id": 124,
+                    "state": "CHANGES_REQUESTED",
+                    "submitted_at": "2026-07-23T04:00:00Z",
+                    "user": {"login": "maintainer"},
+                }
+            ]
+        raise AssertionError(f"unexpected URL: {url}")
+
+    monkeypatch.setattr(module, "fetch_json", fake_fetch_json)
+
+    metrics = module.collect_integration_metrics(["example/reviewed-pr#42"])
+
+    integration = metrics["integrations"][0]
+    assert integration["review_state"] == "changes_requested"
+    assert integration["changes_requested_by"] == ["maintainer"]
+    assert integration["next_action"] == "address review feedback"
+
+
+def test_review_summary_reads_later_pages_before_deciding(monkeypatch):
+    module = load_growth_metrics_module()
+    first_page = [
+        {
+            "id": 1,
+            "state": "CHANGES_REQUESTED",
+            "user": {"login": "maintainer"},
+        }
+    ] + [
+        {
+            "id": review_id,
+            "state": "COMMENTED",
+            "user": {"login": f"reviewer-{review_id}"},
+        }
+        for review_id in range(2, 101)
+    ]
+
+    def fake_fetch_json(url, headers=None):
+        if url == "https://api.github.com/repos/example/long-pr/pulls/42/reviews?per_page=100":
+            return first_page
+        if url == "https://api.github.com/repos/example/long-pr/pulls/42/reviews?per_page=100&page=2":
+            return [
+                {
+                    "id": 101,
+                    "state": "APPROVED",
+                    "user": {"login": "maintainer"},
+                }
+            ]
+        raise AssertionError(f"unexpected URL: {url}")
+
+    monkeypatch.setattr(module, "fetch_json", fake_fetch_json)
+
+    summary = module.summarize_pull_request_reviews("example/long-pr", 42)
+
+    assert summary["state"] == "approved"
+    assert summary["approvals"] == ["maintainer"]
+    assert summary["changes_requested_by"] == []
+
+
+def test_review_summary_keeps_latest_decisive_state_per_reviewer(monkeypatch):
+    module = load_growth_metrics_module()
+
+    def fake_fetch_json(url, headers=None):
+        assert url == "https://api.github.com/repos/example/review-history/pulls/42/reviews?per_page=100"
+        return [
+            {"state": "CHANGES_REQUESTED", "user": {"login": "alice"}},
+            {"state": "COMMENTED", "user": {"login": "alice"}},
+            {"state": "APPROVED", "user": {"login": "alice"}},
+            {"state": "APPROVED", "user": {"login": "bob"}},
+            {"state": "COMMENTED", "user": {"login": "bob"}},
+            {"state": "APPROVED", "user": {"login": "carol"}},
+            {"state": "DISMISSED", "user": {"login": "carol"}},
+        ]
+
+    monkeypatch.setattr(module, "fetch_json", fake_fetch_json)
+
+    summary = module.summarize_pull_request_reviews("example/review-history", 42)
+
+    assert summary["state"] == "approved"
+    assert summary["approvals"] == ["alice", "bob"]
+    assert summary["changes_requested_by"] == []
+
+
+def test_blocked_approved_pr_waits_for_maintainer_merge(monkeypatch):
+    module = load_growth_metrics_module()
+
+    def fake_fetch_json(url, headers=None):
+        if url == "https://api.github.com/repos/example/blocked-pr/pulls/42":
+            return {
+                "number": 42,
+                "title": "Add FunASR",
+                "state": "open",
+                "draft": False,
+                "mergeable": True,
+                "mergeable_state": "blocked",
+                "html_url": "https://github.com/example/blocked-pr/pull/42",
+                "updated_at": "2026-07-23T04:16:43Z",
+                "head": {"sha": "abc1234", "ref": "add-funasr"},
+                "base": {"ref": "main"},
+                "user": {"login": "LauraGPT"},
+            }
+        if url == "https://api.github.com/repos/example/blocked-pr/commits/abc1234/status":
+            return {"state": "success", "statuses": []}
+        if url == "https://api.github.com/repos/example/blocked-pr/commits/abc1234/check-runs?per_page=100":
+            return {
+                "total_count": 1,
+                "check_runs": [
+                    {"name": "test", "status": "completed", "conclusion": "success"}
+                ],
+            }
+        if url == "https://api.github.com/repos/example/blocked-pr/pulls/42/reviews?per_page=100":
+            return [{"state": "APPROVED", "user": {"login": "maintainer"}}]
+        raise AssertionError(f"unexpected URL: {url}")
+
+    monkeypatch.setattr(module, "fetch_json", fake_fetch_json)
+
+    metrics = module.collect_integration_metrics(["example/blocked-pr#42"])
+
+    assert metrics["integrations"][0]["next_action"] == "wait for maintainer merge"
+
+
+def test_wait_for_maintainer_merge_is_not_active_operator_work():
+    module = load_growth_metrics_module()
+    metrics = {
+        "collected_at_utc": "2026-07-23T06:00:00+00:00",
+        "integrations": [
+            {
+                "pr": "huggingface/optimum-intel#1874",
+                "html_url": "https://github.com/huggingface/optimum-intel/pull/1874",
+                "state": "open",
+                "mergeable": True,
+                "mergeable_state": "clean",
+                "repo_stars": 608,
+                "repo_forks": 147,
+                "updated_at": "2026-07-23T04:16:43Z",
+                "updated_age_days": 0,
+                "checks": {
+                    "state": "success",
+                    "failed_check_runs": [],
+                    "pending_check_runs": [],
+                },
+                "next_action": "wait for maintainer merge",
+            }
+        ],
+    }
+
+    output = module.format_integration_markdown(metrics)
+
+    assert "## Active operator queue" not in output
 
 
 def test_known_assisted_review_requests_include_validated_discovery_prs():
@@ -610,6 +1177,7 @@ def test_known_assisted_review_requests_include_validated_review_gate_prs():
         "livekit/agents#6176",
         "run-llama/llama_index#21958",
         "run-llama/llama_index#21996",
+        "BerriAI/litellm-docs#610",
         "mudler/LocalAI#10090",
         "ray-project/ray#64053",
         "agno-agi/agno#8501",
@@ -697,8 +1265,8 @@ def test_collect_integration_metrics_applies_known_review_gate(monkeypatch):
 
     integration = metrics["integrations"][0]
     assert integration["checks"]["state"] == "success"
-    assert integration["known_review_gate_reason"] == "Glama listing and score badge required before review"
-    assert integration["next_action"] == "submit Glama"
+    assert integration["known_review_gate_reason"] == "Glama listing and score badge are live"
+    assert integration["next_action"] == "wait for maintainer review"
 
 
 def test_collect_integration_metrics_surfaces_pending_cla_status(monkeypatch):
@@ -982,38 +1550,45 @@ def test_recommend_integration_action_prioritizes_dirty_merge_state_over_pending
     assert action == "resolve conflicts"
 
 
-def test_collect_integration_metrics_treats_empty_pending_status_as_review_gate(monkeypatch):
+def test_collect_integration_metrics_treats_merged_sglang_omni_as_completed(monkeypatch):
     module = load_growth_metrics_module()
 
     def fake_fetch_json(url, headers=None):
-        if url == "https://api.github.com/repos/sgl-project/sglang-omni/pulls/898":
+        if url == "https://api.github.com/repos/sgl-project/sglang-omni/pulls/1078":
             return {
-                "number": 898,
+                "number": 1078,
                 "title": "Add Fun-ASR serving support",
-                "state": "open",
+                "state": "closed",
                 "draft": False,
                 "mergeable": True,
-                "mergeable_state": "blocked",
-                "html_url": "https://github.com/sgl-project/sglang-omni/pull/898",
-                "updated_at": "2026-06-30T04:48:08Z",
-                "head": {"sha": "c081a79", "ref": "funasr-serving"},
+                "mergeable_state": "unknown",
+                "merged_at": "2026-07-18T15:11:15Z",
+                "html_url": "https://github.com/sgl-project/sglang-omni/pull/1078",
+                "updated_at": "2026-07-18T15:11:15Z",
+                "head": {"sha": "b6ea7ab1", "ref": "add-fun-asr"},
                 "base": {"ref": "main"},
                 "user": {"login": "PoTaTo-Mika"},
             }
-        if url == "https://api.github.com/repos/sgl-project/sglang-omni/commits/c081a79/status":
-            return {"state": "pending", "statuses": []}
-        if url == "https://api.github.com/repos/sgl-project/sglang-omni/commits/c081a79/check-runs?per_page=100":
-            return {"total_count": 0, "check_runs": []}
+        if url == "https://api.github.com/repos/sgl-project/sglang-omni/commits/b6ea7ab1/status":
+            return {"state": "success", "statuses": []}
+        if url == "https://api.github.com/repos/sgl-project/sglang-omni/commits/b6ea7ab1/check-runs?per_page=100":
+            return {
+                "total_count": 2,
+                "check_runs": [
+                    {"name": "unit", "status": "completed", "conclusion": "success"},
+                    {"name": "cleanup - PR CI home on close", "status": "completed", "conclusion": "cancelled"},
+                ],
+            }
         raise AssertionError(f"unexpected URL: {url}")
 
     monkeypatch.setattr(module, "fetch_json", fake_fetch_json)
 
-    metrics = module.collect_integration_metrics(["sgl-project/sglang-omni#898"])
+    metrics = module.collect_integration_metrics(["sgl-project/sglang-omni#1078"])
 
     integration = metrics["integrations"][0]
-    assert integration["checks"]["state"] == "unknown"
-    assert integration["checks"]["pending_check_runs"] == []
-    assert integration["next_action"] == "wait for contributor conflict resolution"
+    assert integration["state"] == "closed"
+    assert integration["checks"]["state"] == "failure"
+    assert integration["next_action"] == "merged / done"
 
 
 def test_format_integration_markdown_includes_update_age_and_next_action():
@@ -1109,6 +1684,68 @@ def test_format_integration_markdown_marks_missing_exposure_metrics_as_unavailab
     assert (
         "| [deleted-org/deleted-repo#1](https://github.com/deleted-org/deleted-repo/pull/1) | "
         "n/a | n/a | open | unknown | unknown | 0 | 0 | n/a | inspect | `2026-06-29T23:45:57Z` |"
+    ) in output
+
+
+def test_format_integration_markdown_marks_unknown_review_gate_as_review_gated():
+    module = load_growth_metrics_module()
+    metrics = {
+        "collected_at_utc": "2026-07-02T00:00:00+00:00",
+        "integrations": [
+            {
+                "pr": "punkpeye/awesome-mcp-servers#7153",
+                "html_url": "https://github.com/punkpeye/awesome-mcp-servers/pull/7153",
+                "state": "open",
+                "mergeable": None,
+                "mergeable_state": "unknown",
+                "repo_stars": 91_000,
+                "repo_forks": 13_000,
+                "updated_at": "2026-07-22T17:46:15Z",
+                "updated_age_days": 0,
+                "next_action": "wait for maintainer review",
+                "known_review_gate_reason": "Glama listing and score badge are live",
+                "checks": {"state": "success", "failed_check_runs": [], "pending_check_runs": []},
+            }
+        ],
+    }
+
+    output = module.format_integration_markdown(metrics)
+
+    assert (
+        "| [punkpeye/awesome-mcp-servers#7153](https://github.com/punkpeye/awesome-mcp-servers/pull/7153) | "
+        "91,000 | 13,000 | open | review-gated | success | 0 | 0 | 0d | wait for maintainer review | `2026-07-22T17:46:15Z` |"
+    ) in output
+
+
+def test_format_integration_markdown_marks_mergeable_blocked_review_wait_as_review_gated():
+    module = load_growth_metrics_module()
+    metrics = {
+        "collected_at_utc": "2026-07-02T00:00:00+00:00",
+        "integrations": [
+            {
+                "pr": "huggingface/transformers#46180",
+                "html_url": "https://github.com/huggingface/transformers/pull/46180",
+                "state": "open",
+                "mergeable": True,
+                "mergeable_state": "blocked",
+                "repo_stars": 162_000,
+                "repo_forks": 33_000,
+                "updated_at": "2026-07-22T08:50:59Z",
+                "updated_age_days": 0,
+                "next_action": "wait for maintainer review",
+                "known_assisted_review_reason": (
+                    "checks are green and the remaining blocker is an active maintainer-held review thread"
+                ),
+                "checks": {"state": "success", "failed_check_runs": [], "pending_check_runs": []},
+            }
+        ],
+    }
+
+    output = module.format_integration_markdown(metrics)
+
+    assert (
+        "| [huggingface/transformers#46180](https://github.com/huggingface/transformers/pull/46180) | "
+        "162,000 | 33,000 | open | review-gated | success | 0 | 0 | 0d | wait for maintainer review | `2026-07-22T08:50:59Z` |"
     ) in output
 
 
@@ -1246,7 +1883,7 @@ def test_format_integration_markdown_lists_active_operator_queue():
     assert "wait for maintainer preliminary PR" not in active_queue
 
 
-def test_format_integration_markdown_lists_manual_handoff_gates():
+def test_format_integration_markdown_excludes_satisfied_review_gates_from_handoff():
     module = load_growth_metrics_module()
     metrics = {
         "collected_at_utc": "2026-07-02T00:00:00+00:00",
@@ -1260,8 +1897,8 @@ def test_format_integration_markdown_lists_manual_handoff_gates():
                 "repo_forks": 12_000,
                 "updated_at": "2026-06-16T04:21:55Z",
                 "updated_age_days": 16,
-                "next_action": "submit Glama",
-                "known_review_gate_reason": "Glama listing and score badge required before review",
+                "next_action": "wait for maintainer review",
+                "known_review_gate_reason": "Glama listing and score badge are live",
                 "checks": {"state": "success", "failed_check_runs": [], "pending_check_runs": []},
             },
             {
@@ -1281,14 +1918,9 @@ def test_format_integration_markdown_lists_manual_handoff_gates():
 
     output = module.format_integration_markdown(metrics)
 
-    active_queue = output.split("## Active operator queue", 1)[1].split("## Manual handoff gates", 1)[0]
-    manual_gates = output.split("## Manual handoff gates", 1)[1].split("## Manual review gates", 1)[0]
+    active_queue = output.split("## Active operator queue", 1)[1].split("## Manual review gates", 1)[0]
     assert "punkpeye/awesome-mcp-servers#7153" not in active_queue
-    assert (
-        "- [punkpeye/awesome-mcp-servers#7153](https://github.com/punkpeye/awesome-mcp-servers/pull/7153): "
-        "submit Glama; Glama listing and score badge required before review"
-    ) in manual_gates
-    assert "huggingface/optimum-intel#1801" not in manual_gates
+    assert "## Manual handoff gates" not in output
 
 
 def test_format_integration_markdown_lists_known_review_gates():
@@ -1305,8 +1937,8 @@ def test_format_integration_markdown_lists_known_review_gates():
                 "repo_forks": 12_000,
                 "updated_at": "2026-06-16T04:21:55Z",
                 "updated_age_days": 14,
-                "next_action": "submit Glama",
-                "known_review_gate_reason": "Glama listing and score badge required before review",
+                "next_action": "wait for maintainer review",
+                "known_review_gate_reason": "Glama listing and score badge are live",
                 "checks": {"state": "success", "failed_check_runs": [], "pending_check_runs": []},
             }
         ],
@@ -1317,7 +1949,7 @@ def test_format_integration_markdown_lists_known_review_gates():
     assert "## Manual review gates" in output
     assert (
         "- [punkpeye/awesome-mcp-servers#7153](https://github.com/punkpeye/awesome-mcp-servers/pull/7153): "
-        "Glama listing and score badge required before review"
+        "Glama listing and score badge are live"
     ) in output
 
 
@@ -1442,8 +2074,8 @@ def test_main_outputs_ecosystem_json(monkeypatch):
 
     repo_stars = {
         "modelscope/FunASR": 18714,
-        "FunAudioLLM/Fun-ASR": 1318,
-        "FunAudioLLM/SenseVoice": 8718,
+        "QwenAudio/Fun-ASR": 1318,
+        "QwenAudio/SenseVoice": 8718,
         "modelscope/FunClip": 5872,
     }
 
@@ -1487,6 +2119,64 @@ def test_main_outputs_ecosystem_json(monkeypatch):
     payload = json.loads(stdout.getvalue())
     assert payload["ecosystem"]["total_stars"] == 34622
     assert payload["ecosystem"]["remaining_to_target"] == 16602
+
+
+def test_main_treats_explicit_multi_repos_as_ecosystem_json(monkeypatch):
+    module = load_growth_metrics_module()
+
+    repo_stars = {
+        "modelscope/FunASR": 18714,
+        "QwenAudio/Fun-ASR": 1318,
+        "QwenAudio/SenseVoice": 8718,
+        "modelscope/FunClip": 5872,
+    }
+
+    def fake_fetch_json(url, headers=None):
+        if url.endswith("/pulls?state=open&per_page=100"):
+            return []
+        if url.startswith("https://api.github.com/repos/"):
+            repo = url.removeprefix("https://api.github.com/repos/")
+            return {
+                "stargazers_count": repo_stars[repo],
+                "forks_count": 0,
+                "subscribers_count": 0,
+                "open_issues_count": 0,
+                "default_branch": "main",
+                "pushed_at": "2026-06-30T00:00:00Z",
+                "html_url": f"https://github.com/{repo}",
+            }
+        if url == "https://pypi.org/pypi/funasr/json":
+            return {"info": {"version": "1.3.14", "summary": "FunASR", "project_url": "https://pypi.org/project/funasr/"}}
+        raise AssertionError(f"unexpected URL: {url}")
+
+    monkeypatch.setattr(module, "fetch_json", fake_fetch_json)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "collect_growth_metrics.py",
+            "--format",
+            "json",
+            "--repos",
+            "modelscope/FunASR",
+            "QwenAudio/Fun-ASR",
+            "QwenAudio/SenseVoice",
+            "modelscope/FunClip",
+        ],
+    )
+
+    with redirect_stdout(io.StringIO()) as stdout:
+        assert module.main() == 0
+
+    payload = json.loads(stdout.getvalue())
+    assert "github" not in payload
+    assert payload["ecosystem"]["total_stars"] == 34622
+    assert [repo["repo"] for repo in payload["ecosystem"]["repositories"]] == [
+        "modelscope/FunASR",
+        "QwenAudio/Fun-ASR",
+        "QwenAudio/SenseVoice",
+        "modelscope/FunClip",
+    ]
 
 
 def test_main_outputs_integrations_json(monkeypatch):
